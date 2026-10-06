@@ -6,3 +6,4 @@ dist/
 .sites-checkout/
 .wrangler/
 .env
+data/
