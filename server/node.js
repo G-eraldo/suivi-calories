@@ -1,8 +1,23 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
+import { join, relative } from "node:path";
 import pg from "pg";
-import handler from "../dist/server/index.js";
 import { createD1Adapter } from "./postgres.js";
+import { createHandler } from "./worker.js";
+
+const publicRoot = new URL("../.output/public/", import.meta.url).pathname;
+const assets = {};
+function collectAssets(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) collectAssets(path);
+    else assets[relative(publicRoot, path).replaceAll("\\", "/")] =
+      readFileSync(path).toString("base64");
+  }
+}
+collectAssets(publicRoot);
+const handler = createHandler(assets);
 
 const username = process.env.APP_USERNAME;
 const password = process.env.APP_PASSWORD;

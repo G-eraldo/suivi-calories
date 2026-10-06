@@ -15,3 +15,8 @@
 - [x] Remplacer le stockage SQLite du serveur Dokploy par PostgreSQL Supabase.
 - [x] Préparer le schéma privé et les variables de déploiement.
 - [ ] Vérifier la connexion et les requêtes sur le projet Supabase choisi.
+
+# Icône et build Dokploy
+
+- [ ] Fournir les icônes PNG et leurs déclarations pour l'écran d'accueil iPhone.
+- [ ] Utiliser directement `nuxt generate` et vérifier `npm run build` sans script intermédiaire.

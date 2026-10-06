@@ -8,8 +8,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "build:site": "node scripts/build-site.mjs",
-    "build": "npm run build:site",
+    "build": "nuxt generate",
     "start": "node server/node.js"
   },
   "dependencies": {
