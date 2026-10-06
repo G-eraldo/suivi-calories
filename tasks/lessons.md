@@ -1,1 +1,2 @@
 - Tester les importeurs OCR avec la sortie bruitée réellement obtenue : espaces manquants, puces mal lues et annotations sur les mêmes lignes que les quantités.
+- Avant d'ouvrir une application en conteneur à l'écriture, vérifier que sa base survivra aux redéploiements ; refuser le démarrage si le stockage persistant requis manque.

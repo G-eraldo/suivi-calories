@@ -9,3 +9,9 @@
 - [x] Ajouter un build et un démarrage détectables par Nixpacks.
 - [x] Fournir le stockage SQLite persistant et l'accès protégé pour Dokploy.
 - [x] Tester le démarrage et documenter les réglages Dokploy nécessaires.
+
+# Base persistante Supabase
+
+- [x] Remplacer le stockage SQLite du serveur Dokploy par PostgreSQL Supabase.
+- [x] Préparer le schéma privé et les variables de déploiement.
+- [ ] Vérifier la connexion et les requêtes sur le projet Supabase choisi.
