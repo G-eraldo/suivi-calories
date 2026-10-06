@@ -252,10 +252,7 @@ async function scanPhoto(event) {
         <div v-if="modal" class="modal-backdrop" @click.self="close">
             <section class="modal" role="dialog" aria-modal="true" :aria-label="modal">
                 <div class="modal-head">
-                    <h2>{{ {
-                        product: 'Ajouter un produit', recipe: 'Créer une recette', meal: 'Ajouter un
-                        repas',goal:'Objectif
-                        quotidien'}[modal] }}</h2><button class="icon-button" aria-label="Fermer"
+                    <h2>{{ { product: 'Ajouter un produit', recipe: 'Créer une recette', meal: 'Ajouter un repas', goal: 'Objectif quotidien' }[modal] }}</h2><button class="icon-button" aria-label="Fermer"
                         @click="close">×</button>
                 </div>
                 <div v-if="error" class="error" role="alert">{{ error }}</div>
@@ -294,9 +291,7 @@ async function scanPhoto(event) {
                                 placeholder="Nom, ingrédients avec quantités et préparation…"></textarea></div>
                         <div class="import-actions"><button type="button" class="secondary"
                                 :disabled="importBusy || !importText.trim()" @click="importRecipe">Analyser le
-                                texte</button><label class="secondary upload-button" for="recipe-photo">{{ importBusy ?
-                                    'Lecture
-                                en cours…' : 'Ajouter une capture' }}</label><input id="recipe-photo" type="file"
+                                texte</button><label class="secondary upload-button" for="recipe-photo">{{ importBusy ? 'Lecture en cours…' : 'Ajouter une capture' }}</label><input id="recipe-photo" type="file"
                                 accept="image/*" :disabled="importBusy" @change="readRecipePhoto"></div>
                         <p v-if="importInfo" class="helper" role="status">{{ importInfo }}</p>
                     </div>
@@ -312,9 +307,7 @@ async function scanPhoto(event) {
                         <div class="ingredient-row"><select v-model="line.productId" required
                                 :aria-label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))">
                                 <option value="" disabled>Choisir un produit</option>
-                                <option v-for="p in state.products" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? '
-                                    ·
-                                    '+p.brand : '' }}</option>
+                                <option v-for="p in state.products" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? ' · ' + p.brand : '' }}</option>
                             </select><input v-model="line.grams" type="number" min="0.1" step="0.1" required
                                 :aria-label="'Grammes pour ' + (line.label || 'ingrédient ' + (i + 1))" placeholder="g"><button
                                 type="button" aria-label="Retirer cet ingrédient"

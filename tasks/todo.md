@@ -18,5 +18,5 @@
 
 # Icône et build Dokploy
 
-- [ ] Fournir les icônes PNG et leurs déclarations pour l'écran d'accueil iPhone.
-- [ ] Utiliser directement `nuxt generate` et vérifier `npm run build` sans script intermédiaire.
+- [x] Fournir les icônes PNG et leurs déclarations pour l'écran d'accueil iPhone.
+- [x] Utiliser directement `nuxt generate` et vérifier `npm run build` sans script intermédiaire.
