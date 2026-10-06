@@ -29,6 +29,20 @@ if (!username || !password)
 const databaseUrl = process.env.SUPABASE_DATABASE_URL;
 if (!databaseUrl)
   throw new Error("Définis SUPABASE_DATABASE_URL dans les variables Dokploy.");
+let parsedDatabaseUrl;
+try {
+  parsedDatabaseUrl = new URL(databaseUrl);
+} catch {
+  throw new Error("SUPABASE_DATABASE_URL doit être une URL PostgreSQL valide.");
+}
+if (
+  !["postgres:", "postgresql:"].includes(parsedDatabaseUrl.protocol) ||
+  /POOLER_HOST|PROJECT_REF|YOUR-PASSWORD|PASSWORD/i.test(databaseUrl)
+) {
+  throw new Error(
+    "SUPABASE_DATABASE_URL contient une valeur d'exemple. Copie l'URL Session pooler complète depuis Supabase > Connect, avec ton vrai mot de passe de base de données.",
+  );
+}
 const pool = new pg.Pool({
   connectionString: databaseUrl,
   ssl: { rejectUnauthorized: true },

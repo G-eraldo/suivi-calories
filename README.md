@@ -6,7 +6,7 @@ Suivi personnel des repas, produits et recettes. L'interface est construite avec
 
 1. Garde **Nixpacks** comme type de build. Le dépôt fournit maintenant les commandes `build` et `start` que Nixpacks détecte.
 2. Dans Supabase → **SQL Editor**, exécute une seule fois [db/supabase-setup.sql](db/supabase-setup.sql). Les tables sont dans le schéma privé `miametrie` et ne sont pas exposées à l'API publique Supabase.
-3. Dans Supabase → **Connect**, copie la chaîne **Session pooler** (port 5432), adaptée aux serveurs IPv4. Remplace le mot de passe indiqué dans cette chaîne par le mot de passe de la base ; encode ses caractères spéciaux pour une URL. Configure la chaîne complète comme variable secrète `SUPABASE_DATABASE_URL` dans Dokploy → **Environment**. Ne la mets pas dans Git ni dans le navigateur.
+3. Dans Supabase → **Connect**, copie la chaîne **Session pooler** (port 5432), adaptée aux serveurs IPv4. Remplace `[YOUR-PASSWORD]` par le mot de passe de la base ; encode ses caractères spéciaux pour une URL. Colle cette chaîne complète dans `SUPABASE_DATABASE_URL` sous Dokploy → **Environment**. Le nom d'hôte doit venir de Supabase et se terminer par `.pooler.supabase.com` : `POOLER_HOST` n'est qu'un ancien exemple, pas un serveur réel. Ne mets pas cette chaîne dans Git ni dans le navigateur.
 4. Dans **Environment**, définis aussi `APP_USERNAME`, `APP_PASSWORD` et `PORT=3000`. La connexion protège l'interface et l'API. Utilise un domaine HTTPS. `DB_PATH` et le montage `/app/data` ne sont plus utilisés.
 5. Configure le domaine Dokploy vers le port `3000`, pousse les changements sur GitHub, puis redéploie. Le serveur vérifie au démarrage que les tables Supabase existent ; il échoue clairement si la chaîne ou le schéma manque.
 

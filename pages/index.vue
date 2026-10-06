@@ -1,6 +1,7 @@
 <script setup>
 import { parseNutritionLabel } from '~/utils/nutrition-scan.js'
 import { matchProduct, parseRecipe } from '~/utils/recipe-import.js'
+import { vegetables } from '~/utils/vegetables.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -12,6 +13,8 @@ const error = ref('')
 const notice = ref('')
 const state = ref({ goal: 2000, products: [], recipes: [], meals: [] })
 const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+const selectedVegetable = ref('')
+const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
 const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '' }] })
 const importText = ref('')
 const importBusy = ref(false)
@@ -58,7 +61,12 @@ const items = computed(() => meal.itemType === 'recipe' ? state.value.recipes : 
 const round = n => Math.round(Number(n) || 0)
 const mealIcon = t => ({ 'Petit-déjeuner': '☀️', 'Déjeuner': '🥗', 'Dîner': '🌙', 'Collation': '🍎' })[t] || '🍽️'
 function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100 } }
-function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1 }
+function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = '' }
+function applyVegetablePreset() {
+    const vegetable = vegetables.find(item => item.name === selectedVegetable.value)
+    if (!vegetable) return
+    Object.assign(product, { name: vegetable.name, brand: '', kcal: vegetable.kcal, protein: vegetable.protein, carbs: vegetable.carbs, fat: vegetable.fat })
+}
 async function send(path, body, method = 'POST') { error.value = ''; try { busy.value = true; await api(path, { method, body: JSON.stringify(body) }); await load(); close(); notice.value = 'Enregistré.'; setTimeout(() => notice.value = '', 3000) } catch (e) { error.value = e.message } finally { busy.value = false } }
 async function saveProduct() {
     error.value = ''
@@ -72,6 +80,7 @@ async function saveProduct() {
             modal.value = 'recipe'
         } else close()
         Object.assign(product, { name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+        selectedVegetable.value = ''
         notice.value = 'Produit enregistré.'
     } catch (e) { error.value = e.message } finally { busy.value = false }
 }
@@ -82,6 +91,7 @@ async function removeItem(type, id) { if (!confirm('Supprimer cet élément ?'))
 function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '' }) }
 function createIngredientProduct(index) {
     productForIngredient.value = index
+    selectedVegetable.value = ''
     Object.assign(product, { name: recipe.ingredients[index].label || '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
     error.value = ''
     modal.value = 'product'
@@ -268,6 +278,11 @@ async function scanPhoto(event) {
                                 :disabled="scanBusy" @change="scanPhoto"></div>
                         <p v-if="scanInfo" class="helper" role="status">{{ scanInfo }}</p>
                     </div>
+                    <div class="field"><label for="p-vegetable">Légume courant (facultatif)</label><select id="p-vegetable"
+                            v-model="selectedVegetable" @change="applyVegetablePreset">
+                            <option value="">Choisir un légume</option>
+                            <option v-for="vegetable in vegetables" :key="vegetable.fdcId" :value="vegetable.name">{{ vegetable.name }}</option>
+                        </select><p class="helper">Valeurs moyennes pour 100 g de légume cru. Les glucides USDA incluent les fibres. Vérifie le poids et adapte les chiffres si besoin. Source : <a :href="selectedVegetableSource ? `https://fdc.nal.usda.gov/food-details/${selectedVegetableSource}/nutrients` : 'https://fdc.nal.usda.gov/'" target="_blank" rel="noopener noreferrer">USDA FoodData Central</a>.</p></div>
                     <div class="field"><label for="p-name">Nom du produit</label><input id="p-name"
                             v-model.trim="product.name" required placeholder="Ex. Farine de blé"></div>
                     <div class="field"><label for="p-brand">Marque (facultatif)</label><input id="p-brand"
