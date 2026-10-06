@@ -2,6 +2,7 @@
 import { parseNutritionLabel } from '~/utils/nutrition-scan.js'
 import { matchProduct, parseRecipe } from '~/utils/recipe-import.js'
 import { vegetables } from '~/utils/vegetables.js'
+import { adelieCone, gramsForCones, conesForGrams } from '~/utils/ice-cream.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -21,6 +22,7 @@ const importBusy = ref(false)
 const importInfo = ref('')
 const productForIngredient = ref(-1)
 const meal = reactive({ itemType: 'product', itemId: '', mealType: 'Déjeuner', quantity: 100 })
+const coneCount = ref(1)
 const goal = ref(2000)
 const scanBusy = ref(false)
 const scanInfo = ref('')
@@ -60,7 +62,12 @@ const remaining = computed(() => Math.max(0, Math.round(state.value.goal - total
 const items = computed(() => meal.itemType === 'recipe' ? state.value.recipes : state.value.products)
 const round = n => Math.round(Number(n) || 0)
 const mealIcon = t => ({ 'Petit-déjeuner': '☀️', 'Déjeuner': '🥗', 'Dîner': '🌙', 'Collation': '🍎' })[t] || '🍽️'
-function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100 } }
+function mealQuantityLabel(entry) {
+    if (entry.item_type === 'recipe') return `${entry.quantity} portion${entry.quantity > 1 ? 's' : ''}`
+    const count = entry.item_name === adelieCone.name ? conesForGrams(entry.quantity) : null
+    return count ? `${count} cône${count > 1 ? 's' : ''} (${entry.quantity} g)` : `${round(entry.quantity)} g`
+}
+function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1 } }
 function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = '' }
 function applyVegetablePreset() {
     const vegetable = vegetables.find(item => item.name === selectedVegetable.value)
@@ -86,6 +93,24 @@ async function saveProduct() {
 }
 async function saveRecipe() { await send('recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams) })) }); if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '' }] }); importText.value = '' } }
 async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
+async function saveConeMeal() {
+    const count = Number(coneCount.value)
+    if (!Number.isInteger(count) || count < 1 || count > 99) { error.value = 'Indique un nombre de cônes entre 1 et 99.'; return }
+    error.value = ''
+    busy.value = true
+    try {
+        let savedProduct = state.value.products.find(item => item.name === adelieCone.name && item.brand === adelieCone.brand)
+        if (!savedProduct) {
+            const { id } = await api('products', { method: 'POST', body: JSON.stringify(adelieCone) })
+            savedProduct = { id }
+        }
+        await api('meals', { method: 'POST', body: JSON.stringify({ date: date.value, mealType: meal.mealType, itemType: 'product', itemId: savedProduct.id, quantity: gramsForCones(count) }) })
+        await load()
+        close()
+        notice.value = `${count} cône${count > 1 ? 's' : ''} ajouté${count > 1 ? 's' : ''} au journal.`
+    } catch (e) { error.value = e.message; await load() }
+    finally { busy.value = false }
+}
 async function saveGoal() { await send('goal', { goal: Number(goal.value) }) }
 async function removeItem(type, id) { if (!confirm('Supprimer cet élément ?')) return; await send(type + '/' + encodeURIComponent(id), {}, 'DELETE') }
 function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '' }) }
@@ -198,8 +223,7 @@ async function scanPhoto(event) {
                 <div v-else class="meal-list">
                     <div v-for="m in state.meals" :key="m.id" class="meal">
                         <div class="meal-icon">{{ mealIcon(m.meal_type) }}</div>
-                        <div class="meal-info"><b>{{ m.item_name }}</b><span>{{ m.meal_type }} · {{
-                            m.item_type === 'product' ? round(m.quantity) + ' g' : m.quantity + ' portion' + (m.quantity > 1 ? 's' : '') }}</span></div>
+                        <div class="meal-info"><b>{{ m.item_name }}</b><span>{{ m.meal_type }} · {{ mealQuantityLabel(m) }}</span></div>
                         <div class="meal-cal">{{ round(m.kcal) }} kcal</div><button class="icon-button"
                             :aria-label="'Supprimer ' + m.item_name" @click="removeItem('meals', m.id)">×</button>
                     </div>
@@ -347,6 +371,12 @@ async function scanPhoto(event) {
                             <option>Dîner</option>
                             <option>Collation</option>
                         </select></div>
+                    <div class="upload"><b>Cônes Adélie vanille nougatine</b>
+                        <p class="helper">1 cône = 68,5 g, soit environ 195 kcal d’après l’étiquette du paquet.</p>
+                        <div class="field"><label for="m-cones">Nombre de cônes</label><input id="m-cones" v-model="coneCount"
+                                type="number" min="1" max="99" step="1"></div>
+                        <button type="button" class="secondary" :disabled="busy" @click="saveConeMeal">Ajouter ces cônes au journal</button>
+                    </div>
                     <div class="field"><label for="m-itemtype">Ajouter</label><select id="m-itemtype"
                             v-model="meal.itemType"
                             @change="meal.itemId = ''; meal.quantity = meal.itemType === 'recipe' ? 1 : 100">
