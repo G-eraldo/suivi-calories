@@ -4,6 +4,17 @@
 - [x] Associer les ingrédients aux produits enregistrés et laisser corriger les quantités et correspondances.
 - [x] Enregistrer et afficher la préparation avec la recette, puis vérifier le parcours et la compilation.
 
+# Ingrédients sans produit
+
+- [x] Permettre de marquer explicitement un ingrédient comme non comptabilisé dans la recette.
+- [x] Conserver cet ingrédient dans la recette enregistrée sans lui attribuer de calories.
+- [x] Vérifier le parcours avec eau, levure et un produit comptabilisé.
+
+# Valeur de référence de la levure sèche
+
+- [x] Préremplir la levure boulangère déshydratée avec une référence nutritionnelle vérifiée.
+- [x] Vérifier le calcul pour 5 g et l’enregistrement depuis une recette.
+
 # Déploiement Dokploy
 
 - [x] Ajouter un build et un démarrage détectables par Nixpacks.
@@ -22,3 +33,9 @@
 
 - [x] Fournir les icônes PNG et leurs déclarations pour l'écran d'accueil iPhone.
 - [x] Utiliser directement `nuxt generate` et vérifier `npm run build` sans script intermédiaire.
+
+# Accès sur iPhone
+
+- [x] Déclarer l'icône et le manifeste dans le HTML initial et rendre les icônes accessibles à Safari.
+- [x] Conserver la connexion avec un cookie de session sécurisé et renouvelable.
+- [x] Vérifier le build et les parcours de session et de cache.

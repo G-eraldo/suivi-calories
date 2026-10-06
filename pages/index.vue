@@ -3,6 +3,7 @@ import { parseNutritionLabel } from '~/utils/nutrition-scan.js'
 import { matchProduct, parseRecipe } from '~/utils/recipe-import.js'
 import { vegetables } from '~/utils/vegetables.js'
 import { adelieCone, gramsForCones, conesForGrams } from '~/utils/ice-cream.js'
+import { dryYeast, isDryYeastLabel } from '~/utils/dry-yeast.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -16,7 +17,7 @@ const state = ref({ goal: 2000, products: [], recipes: [], meals: [] })
 const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
 const selectedVegetable = ref('')
 const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
-const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '' }] })
+const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] })
 const importText = ref('')
 const importBusy = ref(false)
 const importInfo = ref('')
@@ -74,6 +75,10 @@ function applyVegetablePreset() {
     if (!vegetable) return
     Object.assign(product, { name: vegetable.name, brand: '', kcal: vegetable.kcal, protein: vegetable.protein, carbs: vegetable.carbs, fat: vegetable.fat })
 }
+function applyDryYeastPreset() {
+    selectedVegetable.value = ''
+    Object.assign(product, dryYeast)
+}
 async function send(path, body, method = 'POST') { error.value = ''; try { busy.value = true; await api(path, { method, body: JSON.stringify(body) }); await load(); close(); notice.value = 'Enregistré.'; setTimeout(() => notice.value = '', 3000) } catch (e) { error.value = e.message } finally { busy.value = false } }
 async function saveProduct() {
     error.value = ''
@@ -91,7 +96,7 @@ async function saveProduct() {
         notice.value = 'Produit enregistré.'
     } catch (e) { error.value = e.message } finally { busy.value = false }
 }
-async function saveRecipe() { await send('recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams) })) }); if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '' }] }); importText.value = '' } }
+async function saveRecipe() { await send('recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), label: x.label, excluded: x.excluded === true })) }); if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' } }
 async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
 async function saveConeMeal() {
     const count = Number(coneCount.value)
@@ -113,11 +118,12 @@ async function saveConeMeal() {
 }
 async function saveGoal() { await send('goal', { goal: Number(goal.value) }) }
 async function removeItem(type, id) { if (!confirm('Supprimer cet élément ?')) return; await send(type + '/' + encodeURIComponent(id), {}, 'DELETE') }
-function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '' }) }
+function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '', excluded: false }) }
 function createIngredientProduct(index) {
     productForIngredient.value = index
     selectedVegetable.value = ''
     Object.assign(product, { name: recipe.ingredients[index].label || '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+    if (isDryYeastLabel(recipe.ingredients[index].label)) applyDryYeastPreset()
     error.value = ''
     modal.value = 'product'
 }
@@ -127,7 +133,10 @@ function importRecipe() {
     if (parsed.name && !recipe.name) recipe.name = parsed.name
     recipe.portions = parsed.portions
     if (parsed.instructions) recipe.instructions = parsed.instructions
-    recipe.ingredients = parsed.ingredients.map(line => ({ productId: matchProduct(line.label, state.value.products)?.id || '', grams: line.grams || '', label: line.label, original: line.original, estimated: line.estimated }))
+    recipe.ingredients = parsed.ingredients.map(line => {
+        const excluded = /^eau(?:\b|\s)/i.test(line.label.trim())
+        return { productId: excluded ? '' : matchProduct(line.label, state.value.products)?.id || '', grams: line.grams || '', label: line.label, original: line.original, estimated: line.estimated, excluded }
+    })
     importInfo.value = `${parsed.ingredients.length} ingrédient${parsed.ingredients.length > 1 ? 's' : ''} détecté${parsed.ingredients.length > 1 ? 's' : ''}. Vérifie les produits et les poids avant d’enregistrer.`
 }
 async function readRecipePhoto(event) {
@@ -270,7 +279,7 @@ async function scanPhoto(event) {
                         <details v-if="r.ingredients?.length || r.instructions" class="recipe-details">
                             <summary>Voir la recette</summary>
                             <ul>
-                                <li v-for="(line, i) in r.ingredients" :key="i">{{ line.grams }} g de {{ line.name }}
+                                <li v-for="(line, i) in r.ingredients" :key="i">{{ line.grams }} g de {{ line.name }}{{ line.excluded ? ' · non comptabilisé' : '' }}
                                 </li>
                             </ul>
                             <p v-if="r.instructions" class="recipe-steps">{{ r.instructions }}</p>
@@ -307,6 +316,10 @@ async function scanPhoto(event) {
                             <option value="">Choisir un légume</option>
                             <option v-for="vegetable in vegetables" :key="vegetable.fdcId" :value="vegetable.name">{{ vegetable.name }}</option>
                         </select><p class="helper">Valeurs moyennes pour 100 g de légume cru. Les glucides USDA incluent les fibres. Vérifie le poids et adapte les chiffres si besoin. Source : <a :href="selectedVegetableSource ? `https://fdc.nal.usda.gov/food-details/${selectedVegetableSource}/nutrients` : 'https://fdc.nal.usda.gov/'" target="_blank" rel="noopener noreferrer">USDA FoodData Central</a>.</p></div>
+                    <div class="upload"><b>Levure boulangère déshydratée</b>
+                        <p class="helper">Valeur de référence : 325 kcal/100 g, soit environ 16 kcal pour 5 g. Les glucides USDA incluent les fibres. <a href="https://fdc.nal.usda.gov/food-details/175043/nutrients" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p>
+                        <button type="button" class="secondary" @click="applyDryYeastPreset">Remplir avec ces valeurs</button>
+                    </div>
                     <div class="field"><label for="p-name">Nom du produit</label><input id="p-name"
                             v-model.trim="product.name" required placeholder="Ex. Farine de blé"></div>
                     <div class="field"><label for="p-brand">Marque (facultatif)</label><input id="p-brand"
@@ -317,7 +330,7 @@ async function scanPhoto(event) {
                     <div class="grid2">
                         <div v-for="f in [{ key: 'kcal', label: 'Calories (kcal)' }, { key: 'protein', label: 'Protéines (g)' }, { key: 'carbs', label: 'Glucides (g)' }, { key: 'fat', label: 'Lipides (g)' }]"
                             :key="f.key" class="field"><label :for="f.key">{{ f.label }}</label><input :id="f.key"
-                                v-model="product[f.key]" type="number" min="0" step="0.1" required></div>
+                                v-model="product[f.key]" type="number" min="0" step="0.01" required></div>
                     </div><button class="primary full" :disabled="busy || scanBusy">Enregistrer le produit</button>
                 </form>
                 <form v-else-if="modal === 'recipe'" @submit.prevent="saveRecipe">
@@ -343,7 +356,7 @@ async function scanPhoto(event) {
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
                         <div v-if="line.label" class="source-ingredient">{{ line.original || line.label }} <span
                                 v-if="line.estimated">· poids estimé ou à préciser</span></div>
-                        <div class="ingredient-row"><select v-model="line.productId" required
+                        <div class="ingredient-row"><select v-model="line.productId" :required="!line.excluded" :disabled="line.excluded"
                                 :aria-label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))">
                                 <option value="" disabled>Choisir un produit</option>
                                 <option v-for="p in state.products" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? ' · ' + p.brand : '' }}</option>
@@ -352,15 +365,16 @@ async function scanPhoto(event) {
                                 type="button" aria-label="Retirer cet ingrédient"
                                 :disabled="recipe.ingredients.length === 1"
                                 @click="recipe.ingredients.splice(i, 1)">×</button></div><button
-                            v-if="line.label && !line.productId" type="button" class="link-button"
+                            v-if="line.label && !line.productId && !line.excluded" type="button" class="link-button"
                             @click="createIngredientProduct(i)">Créer « {{ line.label }} » comme produit</button>
+                        <label class="ingredient-exclude"><input v-model="line.excluded" type="checkbox" @change="line.productId = ''">Ne pas comptabiliser cet ingrédient (sans produit)</label>
+                        <div v-if="line.excluded" class="field"><label :for="'r-excluded-' + i">Nom de l’ingrédient</label><input
+                                :id="'r-excluded-' + i" v-model.trim="line.label" required placeholder="Ex. Eau ou levure boulangère"></div>
                     </div><button type="button" class="secondary" @click="addIngredient">Ajouter un ingrédient</button>
                     <div class="field"><label for="r-instructions">Préparation (facultatif)</label><textarea
                             id="r-instructions" v-model="recipe.instructions" rows="5"
                             placeholder="Étapes de préparation…"></textarea></div>
-                    <p class="tip">Les valeurs nutritionnelles publiées avec une recette peuvent différer : le calcul
-                        utilise
-                        tes produits et les quantités ci-dessus.</p><button class="primary full"
+                    <p class="tip">Le calcul utilise seulement les ingrédients associés à un produit. Les ingrédients marqués « Ne pas comptabiliser » restent dans la recette, sans calories ajoutées.</p><button class="primary full"
                         :disabled="busy || importBusy || !state.products.length">Enregistrer la recette</button>
                 </form>
                 <form v-else-if="modal === 'meal'" @submit.prevent="saveMeal">

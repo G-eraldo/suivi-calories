@@ -154,8 +154,16 @@ async function api(request, env, url) {
         saved = [];
       for (const line of ingredients) {
         const grams = numeric(line?.grams, 0.1, 100000);
-        if (!grams || typeof line.productId !== "string")
+        if (!grams)
           return fail("Vérifie les quantités des ingrédients.");
+        if (line?.excluded === true) {
+          const label = cleanName(line.label);
+          if (!label) return fail("Nomme les ingrédients non comptabilisés.");
+          saved.push({ productId: null, name: label, grams, excluded: true });
+          continue;
+        }
+        if (typeof line.productId !== "string" || !line.productId)
+          return fail("Choisis un produit ou coche « Ne pas comptabiliser » pour chaque ingrédient.");
         const p = await one(
           db,
           "SELECT id,name,kcal,protein,carbs,fat FROM products WHERE id = ? AND owner_id = ?",
@@ -167,6 +175,8 @@ async function api(request, env, url) {
           totals[key] += (p[key] * grams) / 100;
         saved.push({ productId: p.id, name: p.name, grams });
       }
+      if (saved.every((line) => line.excluded))
+        return fail("Sélectionne au moins un produit comptabilisé pour la recette.");
       const id = crypto.randomUUID();
       await db
         .prepare(
@@ -268,21 +278,24 @@ function base64Bytes(s) {
   return bytes;
 }
 export function createHandler(assets) {
+  const decodedAssets = Object.fromEntries(
+    Object.entries(assets).map(([path, content]) => [path, base64Bytes(content)]),
+  );
   return {
     async fetch(request, env) {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/api/")) return api(request, env, url);
       const path =
         decodeURIComponent(url.pathname).replace(/^\//, "") || "index.html";
-      const key = Object.hasOwn(assets, path) ? path : "index.html";
+      const key = Object.hasOwn(decodedAssets, path) ? path : "index.html";
       const ext = key.split(".").pop().toLowerCase();
-      return new Response(base64Bytes(assets[key]), {
+      return new Response(decodedAssets[key], {
         headers: {
           "Content-Type": mime[ext] || "application/octet-stream",
           "Cache-Control":
-            key === "index.html"
-              ? "no-cache"
-              : "public, max-age=31536000, immutable",
+            key.startsWith("_nuxt/") && /(?:\/|[._])[\w-]{8,}\.(js|css)$/.test(key)
+              ? "public, max-age=31536000, immutable"
+              : "no-cache",
         },
       });
     },

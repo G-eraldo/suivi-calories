@@ -467,6 +467,18 @@ button:disabled {
   height: 40px;
   font-size: 20px;
 }
+.ingredient-exclude {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #345b56;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ingredient-exclude input {
+  width: 18px;
+  height: 18px;
+}
 .tip {
   border-left: 3px solid #abd563;
   padding: 7px 12px;

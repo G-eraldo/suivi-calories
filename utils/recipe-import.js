@@ -1,3 +1,5 @@
+import { isDryYeastLabel } from './dry-yeast.js'
+
 const normalize = value => String(value || '').replace(/œ/gi, 'oe').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 const stop = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'un', 'une', 'et', 'au', 'aux', 'ton', 'ta', 'choix', 'petit', 'style'])
 const aliases = [
@@ -74,6 +76,7 @@ export function matchProduct(label, products) {
   if (!wanted.length) return null
   let best = null, bestScore = 0, tied = false
   for (const product of products) {
+    if (isDryYeastLabel(label) && !isDryYeastLabel(product.name)) continue
     const candidate = tokens(`${product.name} ${product.brand || ''}`)
     const overlap = wanted.filter(token => candidate.includes(token)).length
     const score = overlap / wanted.length

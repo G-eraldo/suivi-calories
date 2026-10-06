@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, relative } from "node:path";
@@ -7,6 +6,7 @@ import pg from "pg";
 import { createD1Adapter } from "./postgres.js";
 import { createPgConfig } from "./pg-config.js";
 import { createHandler } from "./worker.js";
+import { createAuth } from "./auth.js";
 
 const publicRoot = fileURLToPath(new URL("../.output/public/", import.meta.url));
 const assets = {};
@@ -27,6 +27,7 @@ if (!username || !password)
   throw new Error(
     "Définis APP_USERNAME et APP_PASSWORD dans les variables Dokploy.",
   );
+const auth = createAuth(username, password);
 const databaseUrl = process.env.SUPABASE_DATABASE_URL;
 if (!databaseUrl)
   throw new Error("Définis SUPABASE_DATABASE_URL dans les variables Dokploy.");
@@ -57,22 +58,15 @@ pool.on("error", (error) =>
 await pool.query("SELECT 1 FROM miametrie.settings LIMIT 0");
 const DB = createD1Adapter(pool);
 
-function authorized(header) {
-  if (!header?.startsWith("Basic ")) return false;
-  const supplied = Buffer.from(header.slice(6), "base64").toString("utf8");
-  const expectedHash = createHash("sha256")
-    .update(`${username}:${password}`)
-    .digest();
-  const suppliedHash = createHash("sha256").update(supplied).digest();
-  return timingSafeEqual(expectedHash, suppliedHash);
-}
-
 const server = createServer(async (req, res) => {
   if (req.url === "/health") {
     res.writeHead(200).end("ok");
     return;
   }
-  if (!authorized(req.headers.authorization)) {
+  const publicAsset = (req.method === "GET" || req.method === "HEAD") &&
+    ["/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/favicon.svg", "/site.webmanifest"].includes(req.url?.split("?")[0]);
+  const access = publicAsset ? { authorized: true, setCookie: null } : auth.authenticate(req.headers);
+  if (!access.authorized) {
     res
       .writeHead(401, {
         "WWW-Authenticate": 'Basic realm="Miamétrie", charset="UTF-8"',
@@ -100,7 +94,9 @@ const server = createServer(async (req, res) => {
       duplex: "half",
     });
     const response = await handler.fetch(request, { DB });
-    res.writeHead(response.status, Object.fromEntries(response.headers));
+    const responseHeaders = Object.fromEntries(response.headers);
+    if (access.setCookie) responseHeaders["Set-Cookie"] = access.setCookie;
+    res.writeHead(response.status, responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) {
     console.error("Request failed", error);

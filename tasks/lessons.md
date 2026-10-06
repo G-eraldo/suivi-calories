@@ -5,3 +5,5 @@
 - Pour une variable secrète, laisser l'exemple vide et valider les placeholders au démarrage afin d'éviter qu'une fausse URL soit déployée.
 - Quand une correction utilisateur confirme le choix d'une base existante, corriger la connexion avant d'envisager un changement de moteur de stockage.
 - Pour un déploiement, privilégier une configuration directe dans les variables d'environnement quand la plateforme accepte les valeurs multilignes.
+- Dans une recette, permettre de conserver un ingrédient sans produit nutritionnel avec une exclusion explicite du calcul.
+- Pour un ingrédient courant sans étiquette, proposer une valeur nutritionnelle de référence sourcée et modifiable.
