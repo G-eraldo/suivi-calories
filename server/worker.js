@@ -17,10 +17,13 @@ async function api(request, env, url) {
    const [settings, products, recipes, meals] = await Promise.all([
     one(db, 'SELECT goal_kcal FROM settings WHERE owner_id = ?', owner),
     all(db, 'SELECT id,name,brand,kcal,protein,carbs,fat FROM products WHERE owner_id = ? ORDER BY name LIMIT 500', owner),
-    all(db, 'SELECT id,name,portions,kcal,protein,carbs,fat FROM recipes WHERE owner_id = ? ORDER BY name LIMIT 500', owner),
+    all(db, 'SELECT id,name,portions,ingredients_json,kcal,protein,carbs,fat FROM recipes WHERE owner_id = ? ORDER BY name LIMIT 500', owner),
     all(db, 'SELECT id,item_name,item_type,meal_type,quantity,kcal,protein,carbs,fat FROM meals WHERE owner_id = ? AND eaten_on = ? ORDER BY created_at DESC LIMIT 500', owner, day)
    ])
-   return json({ goal: settings?.goal_kcal || 2000, products, recipes, meals })
+   return json({ goal: settings?.goal_kcal || 2000, products, recipes: recipes.map(({ ingredients_json, ...recipe }) => {
+    try { const saved = JSON.parse(ingredients_json); return { ...recipe, ingredients: Array.isArray(saved) ? saved : saved.ingredients || [], instructions: Array.isArray(saved) ? '' : saved.instructions || '' } }
+    catch { return { ...recipe, ingredients: [], instructions: '' } }
+   }), meals })
   }
   if (method === 'POST' && parts[0] === 'goal') {
    const b = await bodyOf(request), goal = numeric(b?.goal, 500, 10000)
@@ -38,7 +41,7 @@ async function api(request, env, url) {
   }
   if (method === 'POST' && parts[0] === 'recipes') {
    const b = await bodyOf(request), name = cleanName(b?.name), portions = numeric(b?.portions, 1, 100)
-   const ingredients = b?.ingredients
+   const ingredients = b?.ingredients, instructions = typeof b?.instructions === 'string' ? b.instructions.trim().slice(0, 10000) : ''
    if (!name || !Number.isInteger(portions) || !Array.isArray(ingredients) || !ingredients.length || ingredients.length > 50) return fail('Complète le nom, les portions et les ingrédients.')
    const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 }, saved = []
    for (const line of ingredients) {
@@ -50,7 +53,7 @@ async function api(request, env, url) {
     saved.push({ productId: p.id, name: p.name, grams })
    }
    const id = crypto.randomUUID()
-   await db.prepare('INSERT INTO recipes (id,owner_id,name,portions,ingredients_json,kcal,protein,carbs,fat,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(id, owner, name, portions, JSON.stringify(saved), ...Object.values(totals).map(x => Math.round(x / portions * 10) / 10), new Date().toISOString()).run()
+   await db.prepare('INSERT INTO recipes (id,owner_id,name,portions,ingredients_json,kcal,protein,carbs,fat,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(id, owner, name, portions, JSON.stringify({ ingredients: saved, instructions }), ...Object.values(totals).map(x => Math.round(x / portions * 10) / 10), new Date().toISOString()).run()
    return json({ id }, 201)
   }
   if (method === 'POST' && parts[0] === 'meals') {
