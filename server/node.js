@@ -5,6 +5,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createD1Adapter } from "./postgres.js";
+import { createPgConfig } from "./pg-config.js";
 import { createHandler } from "./worker.js";
 
 const publicRoot = fileURLToPath(new URL("../.output/public/", import.meta.url));
@@ -43,13 +44,13 @@ if (
     "SUPABASE_DATABASE_URL contient une valeur d'exemple. Copie l'URL Session pooler complète depuis Supabase > Connect, avec ton vrai mot de passe de base de données.",
   );
 }
-const pool = new pg.Pool({
-  connectionString: databaseUrl,
-  ssl: { rejectUnauthorized: true },
-  max: 3,
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-});
+const pool = new pg.Pool(
+  createPgConfig(
+    databaseUrl,
+    process.env.SUPABASE_CA_FILE,
+    process.env.SUPABASE_CA,
+  ),
+);
 pool.on("error", (error) =>
   console.error("Connexion Supabase interrompue", error),
 );

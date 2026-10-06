@@ -12,13 +12,10 @@
     "start": "node server/node.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
-    "drizzle-orm": "^0.45.3",
-    "nuxt": "^4.0.0",
-    "pg": "8.23.1",
-    "tesseract.js": "^6.0.0"
+    "pg": "8.23.1"
   },
   "devDependencies": {
-    "drizzle-kit": "^0.31.11"
+    "nuxt": "^4.0.0",
+    "tesseract.js": "^6.0.0"
   }
 }

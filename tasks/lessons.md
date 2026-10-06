@@ -3,3 +3,5 @@
 - Pour une icône d'écran d'accueil mobile, fournir un `apple-touch-icon` PNG ; le seul favicon SVG ne suffit pas.
 - Éviter un script de build spécifique quand la commande standard du framework produit déjà les fichiers nécessaires au serveur.
 - Pour une variable secrète, laisser l'exemple vide et valider les placeholders au démarrage afin d'éviter qu'une fausse URL soit déployée.
+- Quand une correction utilisateur confirme le choix d'une base existante, corriger la connexion avant d'envisager un changement de moteur de stockage.
+- Pour un déploiement, privilégier une configuration directe dans les variables d'environnement quand la plateforme accepte les valeurs multilignes.

@@ -15,6 +15,8 @@
 - [x] Remplacer le stockage SQLite du serveur Dokploy par PostgreSQL Supabase.
 - [x] Préparer le schéma privé et les variables de déploiement.
 - [ ] Vérifier la connexion et les requêtes sur le projet Supabase choisi.
+- [x] Permettre une connexion TLS sans certificat CA, avec vérification du serveur facultative.
+- [x] Retirer les dépendances inutilisées et vérifier l'audit des dépendances exécutées en production.
 
 # Icône et build Dokploy
 
