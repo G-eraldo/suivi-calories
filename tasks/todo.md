@@ -6,6 +6,6 @@
 
 # Déploiement Dokploy
 
-- [ ] Ajouter un build et un démarrage détectables par Nixpacks.
-- [ ] Fournir le stockage SQLite persistant et l'accès protégé pour Dokploy.
-- [ ] Tester le démarrage et documenter les réglages Dokploy nécessaires.
+- [x] Ajouter un build et un démarrage détectables par Nixpacks.
+- [x] Fournir le stockage SQLite persistant et l'accès protégé pour Dokploy.
+- [x] Tester le démarrage et documenter les réglages Dokploy nécessaires.

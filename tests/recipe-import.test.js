@@ -30,3 +30,25 @@ test('réutilise la farine habituelle si elle est la seule farine enregistrée',
   assert.equal(matchProduct('farine de petit épeautre (ou la farine de ton choix)', [flour])?.id, 'flour')
   assert.equal(matchProduct('whey vanille', [flour]), null)
 })
+
+test('lit les cinq ingrédients malgré les erreurs OCR de la capture pita', () => {
+  const text = `@ Pains pita – 2 personnes
+135 g de ta farine à pizza – 339 kcal/100 g
+e 40gdes kyr
+e 47mld'eau
+e 1a 2 pschitt d'huile d'olive
+* 74 sachet de levure boulangère`
+  const recipe = parseRecipe(text)
+  assert.equal(recipe.name, 'Pains pita')
+  assert.equal(recipe.portions, 2)
+  assert.deepEqual(recipe.ingredients.map(line => line.label), ['ta farine à pizza', 'skyr', 'eau', "huile d'olive", 'levure boulangère'])
+  assert.deepEqual(recipe.ingredients.map(line => line.grams), [135, 40, 47, null, null])
+})
+
+test('la fraction de sachet et les sprays restent à peser', () => {
+  const recipe = parseRecipe(`Pains pita — 2 personnes
+• 1 à 2 pschitt d'huile d'olive
+• ⅔ sachet de levure boulangère`)
+  assert.equal(recipe.ingredients.length, 2)
+  assert.deepEqual(recipe.ingredients.map(line => line.grams), [null, null])
+})

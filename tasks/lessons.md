@@ -1,0 +1,1 @@
+- Tester les importeurs OCR avec la sortie bruitée réellement obtenue : espaces manquants, puces mal lues et annotations sur les mêmes lignes que les quantités.

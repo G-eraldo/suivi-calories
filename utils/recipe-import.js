@@ -20,12 +20,17 @@ function amount(value) {
   return Number(value.replace(',', '.'))
 }
 function ingredientLine(line) {
-  const clean = line.replace(/^[\s•·●▪◦*\-–]+/, '').replace(/^[^\p{L}\p{N}½⅓⅔¼]+/u, '').trim()
-  const match = clean.match(/^(\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+|[½⅓⅔¼])\s*(kg|g|grammes?|ml|cl|litres?|l)?\s*(?:de\s+|d['’])?(.+)$/i)
+  const clean = line.replace(/^[\s•·●▪◦*\-–]+/, '').replace(/^[^\p{L}\p{N}½⅓⅔¼]+/u, '').replace(/^e\s+(?=\d|[½⅓⅔¼])/i, '').trim()
+  const withoutNutrition = clean.replace(/\s+[—–-]\s*\d+(?:[.,]\d+)?\s*kcal(?:\s*\/\s*100\s*g)?.*$/i, '').trim()
+  const spray = withoutNutrition.match(/^\d+\s*(?:à|a|-)\s*\d+\s*pschitts?\s*(?:de\s*|d['’])?(.+)$/i)
+  if (spray) return { label: spray[1].trim(), grams: null, original: clean, estimated: true, unit: 'pschitt' }
+  const sachet = withoutNutrition.match(/^(?:\d+(?:[.,]\d+)?|\d+\s*\/\s*\d+|[½⅓⅔¼])\s*sachets?\s*(?:de\s*)?(.+)$/i)
+  if (sachet) return { label: sachet[1].trim(), grams: null, original: clean, estimated: true, unit: 'sachet' }
+  const match = withoutNutrition.match(/^(\d+\s*\/\s*\d+|[½⅓⅔¼]|\d+(?:[.,]\d+)?)\s*(kg|g|grammes?|ml|cl|litres?|l)?\s*(?:de\s*|d['’])?(.+)$/i)
   if (!match) return null
   const quantity = amount(match[1].replace(/\s/g, ''))
   const unit = normalize(match[2] || '')
-  const label = (match[3] || '').replace(/\s+[—–→].*$/, '').trim()
+  const label = (match[3] || '').replace(/\s+[—–→].*$/, '').replace(/^s\s+kyr\b/i, 'skyr').trim()
   if (!quantity || !label || /^(kcal|proteines|glucides|lipides|minutes?|personnes?)/i.test(label)) return null
   let grams = null
   if (unit === 'g' || unit.startsWith('gramme')) grams = quantity
@@ -39,6 +44,7 @@ function ingredientLine(line) {
 }
 export function parseRecipe(text) {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const hasIngredientHeading = lines.some(line => /\b(?:liste des )?ingredients?\b/i.test(normalize(line)))
   let name = '', portions = 1, mode = '', ingredients = [], instructions = []
   for (const line of lines) {
     const serving = line.match(/\b(?:pour\s+)?(\d+)\s*(?:gaufres?|portions?|personnes?|pains?)\b/i)
@@ -50,9 +56,11 @@ export function parseRecipe(text) {
       continue
     }
     if (/^(?:preparation|instructions?|etapes?)\b/.test(normalize(line))) { mode = 'steps'; continue }
-    if (/\bvaleurs? nutritionnelles?\b|\bkcal\b|\bproteines?\b|\bglucides?\b|\blipides?\b/i.test(normalize(line))) continue
-    if (!name && !mode && /[a-zà-ÿ]/i.test(line) && !/^(@|#|les |pour |enregistre)/i.test(line) && line.length < 100) name = line.replace(/^[^\p{L}]+/u, '').replace(/\s*[|—–].*$/, '').trim()
+    if (/\bvaleurs? nutritionnelles?\b/i.test(normalize(line))) continue
+    const titleLine = line.replace(/^[@\s]+/, '').trim()
+    if (!name && !mode && /[a-zà-ÿ]/i.test(titleLine) && !/^(#|les |pour |enregistre|\d)/i.test(titleLine) && titleLine.length < 100) name = titleLine.replace(/^[^\p{L}]+/u, '').replace(/\s*[|—–].*$/, '').trim()
     if (mode === 'steps') { if (!/^(@|#|profite|envoie)/i.test(line)) instructions.push(line.replace(/^[\s\d️⃣⃣.]+/u, '').trim()); continue }
+    if (hasIngredientHeading && mode !== 'ingredients') continue
     const ingredient = ingredientLine(line)
     if (ingredient) ingredients.push(ingredient)
     else if (mode === 'ingredients' && /^[\s•·●▪◦*\-–]+/.test(line) && /[\p{L}]/u.test(line)) {
