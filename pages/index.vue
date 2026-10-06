@@ -189,8 +189,7 @@ async function scanPhoto(event) {
                     <div v-for="m in state.meals" :key="m.id" class="meal">
                         <div class="meal-icon">{{ mealIcon(m.meal_type) }}</div>
                         <div class="meal-info"><b>{{ m.item_name }}</b><span>{{ m.meal_type }} · {{
-                            m.item_type === 'product' ? round(m.quantity) + ' g' : m.quantity + '
-                                portion'+(m.quantity>1?'s':'') }}</span></div>
+                            m.item_type === 'product' ? round(m.quantity) + ' g' : m.quantity + ' portion' + (m.quantity > 1 ? 's' : '') }}</span></div>
                         <div class="meal-cal">{{ round(m.kcal) }} kcal</div><button class="icon-button"
                             :aria-label="'Supprimer ' + m.item_name" @click="removeItem('meals', m.id)">×</button>
                     </div>

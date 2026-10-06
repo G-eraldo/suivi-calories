@@ -2,11 +2,12 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { createD1Adapter } from "./postgres.js";
 import { createHandler } from "./worker.js";
 
-const publicRoot = new URL("../.output/public/", import.meta.url).pathname;
+const publicRoot = fileURLToPath(new URL("../.output/public/", import.meta.url));
 const assets = {};
 function collectAssets(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
