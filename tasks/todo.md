@@ -1,3 +1,9 @@
+# Recherche dans les listes
+
+- [x] Ajouter une recherche aux produits, aliments préremplis et recettes.
+- [x] Filtrer les sélecteurs de repas et d’ingrédients sans perdre la sélection.
+- [x] Vérifier la compilation et les règles de présentation mobile concernées.
+
 # Choix de l’unité dans les ingrédients
 
 - [x] Ajouter g/cl à côté de chaque ingrédient liquide et conserver le choix à l’édition.

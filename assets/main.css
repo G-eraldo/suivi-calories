@@ -581,6 +581,10 @@ button:disabled {
   gap: 7px;
   margin: 13px 0;
 }
+.list-search {
+  max-width: 420px;
+  margin: 0 0 20px;
+}
 .field label {
   font-size: 14px;
   font-weight: 700;
