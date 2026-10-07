@@ -1,3 +1,9 @@
+# Fibres et dépendances de sécurité
+
+- [x] Ajouter les fibres facultatives aux produits, recettes, repas, OCR et affichages, avec migration des données existantes.
+- [x] Corriger les dépendances vulnérables lorsque des versions sûres existent.
+- [ ] Vérifier les tests, le build, l'audit et la mise en production. Tests et build validés ; redéploiement Dokploy à vérifier.
+
 # Catalogue des aliments préremplis
 
 - [x] Afficher les références nutritionnelles existantes dans l’onglet Produits.

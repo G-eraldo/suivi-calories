@@ -65,17 +65,17 @@ async function api(request, env, url) {
         one(db, "SELECT goal_kcal FROM settings WHERE owner_id = ?", owner),
         all(
           db,
-          "SELECT id,name,brand,kcal,protein,carbs,fat FROM products WHERE owner_id = ? ORDER BY name LIMIT 500",
+          "SELECT id,name,brand,kcal,protein,carbs,fat,fiber FROM products WHERE owner_id = ? ORDER BY name LIMIT 500",
           owner,
         ),
         all(
           db,
-          "SELECT id,name,portions,ingredients_json,kcal,protein,carbs,fat FROM recipes WHERE owner_id = ? ORDER BY name LIMIT 500",
+          "SELECT id,name,portions,ingredients_json,kcal,protein,carbs,fat,fiber FROM recipes WHERE owner_id = ? ORDER BY name LIMIT 500",
           owner,
         ),
         all(
           db,
-          "SELECT id,item_name,item_type,meal_type,quantity,kcal,protein,carbs,fat FROM meals WHERE owner_id = ? AND eaten_on = ? ORDER BY created_at DESC LIMIT 500",
+          "SELECT id,item_name,item_type,meal_type,quantity,kcal,protein,carbs,fat,fiber FROM meals WHERE owner_id = ? AND eaten_on = ? ORDER BY created_at DESC LIMIT 500",
           owner,
           day,
         ),
@@ -122,16 +122,31 @@ async function api(request, env, url) {
       const values = ["kcal", "protein", "carbs", "fat"].map((k) =>
         numeric(b?.[k], 0, 10000),
       );
+      const fiber = b?.fiber === undefined || b?.fiber === null || b?.fiber === ""
+        ? null : numeric(b.fiber, 0, 100);
       if (!name || values.some((x) => x === null))
         return fail("Complète le nom et les valeurs nutritionnelles.");
+      if (fiber === null && b?.fiber !== undefined && b?.fiber !== null && b?.fiber !== "")
+        return fail("Vérifie la quantité de fibres pour 100 g.");
       const id = crypto.randomUUID();
       await db
         .prepare(
-          "INSERT INTO products (id,owner_id,name,brand,kcal,protein,carbs,fat,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (id,owner_id,name,brand,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
         )
-        .bind(id, owner, name, brand, ...values, new Date().toISOString())
+        .bind(id, owner, name, brand, ...values, fiber, new Date().toISOString())
         .run();
       return json({ id }, 201);
+    }
+    if (method === "PATCH" && parts[0] === "products" && parts[1]) {
+      const b = await bodyOf(request);
+      const fiber = b?.fiber === null || b?.fiber === "" ? null : numeric(b?.fiber, 0, 100);
+      if (fiber === null && b?.fiber !== null && b?.fiber !== "")
+        return fail("Vérifie la quantité de fibres pour 100 g.");
+      const product = await one(db, "SELECT id FROM products WHERE id = ? AND owner_id = ?", parts[1], owner);
+      if (!product) return fail("Ce produit est introuvable.", 404);
+      await db.prepare("UPDATE products SET fiber = ? WHERE id = ? AND owner_id = ?")
+        .bind(fiber, parts[1], owner).run();
+      return json({ ok: true });
     }
     if (method === "POST" && parts[0] === "recipes") {
       const b = await bodyOf(request),
@@ -151,6 +166,7 @@ async function api(request, env, url) {
       )
         return fail("Complète le nom, les portions et les ingrédients.");
       const totals = { kcal: 0, protein: 0, carbs: 0, fat: 0 },
+        fibers = [],
         saved = [];
       for (const line of ingredients) {
         const grams = numeric(line?.grams, 0.1, 100000);
@@ -166,13 +182,14 @@ async function api(request, env, url) {
           return fail("Choisis un produit ou coche « Ne pas comptabiliser » pour chaque ingrédient.");
         const p = await one(
           db,
-          "SELECT id,name,kcal,protein,carbs,fat FROM products WHERE id = ? AND owner_id = ?",
+          "SELECT id,name,kcal,protein,carbs,fat,fiber FROM products WHERE id = ? AND owner_id = ?",
           line.productId,
           owner,
         );
         if (!p) return fail("Un produit de la recette est introuvable.");
         for (const key of Object.keys(totals))
           totals[key] += (p[key] * grams) / 100;
+        fibers.push(p.fiber == null ? null : (p.fiber * grams) / 100);
         saved.push({ productId: p.id, name: p.name, grams });
       }
       if (saved.every((line) => line.excluded))
@@ -180,7 +197,7 @@ async function api(request, env, url) {
       const id = crypto.randomUUID();
       await db
         .prepare(
-          "INSERT INTO recipes (id,owner_id,name,portions,ingredients_json,kcal,protein,carbs,fat,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO recipes (id,owner_id,name,portions,ingredients_json,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(
           id,
@@ -191,6 +208,7 @@ async function api(request, env, url) {
           ...Object.values(totals).map(
             (x) => Math.round((x / portions) * 10) / 10,
           ),
+          fibers.some((value) => value === null) ? null : Math.round(fibers.reduce((sum, value) => sum + value, 0) / portions * 10) / 10,
           new Date().toISOString(),
         )
         .run();
@@ -212,7 +230,7 @@ async function api(request, env, url) {
       const table = b.itemType === "product" ? "products" : "recipes";
       const item = await one(
         db,
-        `SELECT id,name,kcal,protein,carbs,fat FROM ${table} WHERE id = ? AND owner_id = ?`,
+        `SELECT id,name,kcal,protein,carbs,fat,fiber FROM ${table} WHERE id = ? AND owner_id = ?`,
         b.itemId,
         owner,
       );
@@ -221,7 +239,7 @@ async function api(request, env, url) {
       const id = crypto.randomUUID();
       await db
         .prepare(
-          "INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,kcal,protein,carbs,fat,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(
           id,
@@ -235,6 +253,7 @@ async function api(request, env, url) {
           ...["kcal", "protein", "carbs", "fat"].map(
             (k) => Math.round(item[k] * factor * 10) / 10,
           ),
+          item.fiber == null ? null : Math.round(item.fiber * factor * 10) / 10,
           new Date().toISOString(),
         )
         .run();

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS miametrie.products (
   protein double precision NOT NULL,
   carbs double precision NOT NULL,
   fat double precision NOT NULL,
+  fiber double precision,
   created_at text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_products_owner_name ON miametrie.products (owner_id, name);
@@ -31,6 +32,7 @@ CREATE TABLE IF NOT EXISTS miametrie.recipes (
   protein double precision NOT NULL,
   carbs double precision NOT NULL,
   fat double precision NOT NULL,
+  fiber double precision,
   created_at text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_recipes_owner_name ON miametrie.recipes (owner_id, name);
@@ -48,6 +50,7 @@ CREATE TABLE IF NOT EXISTS miametrie.meals (
   protein double precision NOT NULL,
   carbs double precision NOT NULL,
   fat double precision NOT NULL,
+  fiber double precision,
   created_at text NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_meals_owner_day ON miametrie.meals (owner_id, eaten_on);

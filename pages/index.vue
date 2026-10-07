@@ -17,7 +17,8 @@ const notice = ref('')
 const state = ref({ goal: 2000, products: [], recipes: [], meals: [] })
 const referenceProducts = [...vegetables, ...commonFoods, dryYeast, adelieCone]
 const savedReferenceProduct = reference => state.value.products.some(item => item.name === reference.name && (item.brand || '') === (reference.brand || ''))
-const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '', fiber: '' })
+const fiberEdits = reactive({})
 const selectedVegetable = ref('')
 const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
 const selectedCommonFoodPreset = ref('')
@@ -52,9 +53,9 @@ onMounted(async () => {
     })
     await register({
         name: 'create_product', title: 'Enregistrer un produit', description: 'Enregistrer un produit avec ses valeurs nutritionnelles pour 100 g.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string' }, brand: { type: 'string' }, kcal: { type: 'number', minimum: 0 }, protein: { type: 'number', minimum: 0 }, carbs: { type: 'number', minimum: 0 }, fat: { type: 'number', minimum: 0 } }, required: ['name', 'kcal', 'protein', 'carbs', 'fat'], additionalProperties: false },
+        inputSchema: { type: 'object', properties: { name: { type: 'string' }, brand: { type: 'string' }, kcal: { type: 'number', minimum: 0 }, protein: { type: 'number', minimum: 0 }, carbs: { type: 'number', minimum: 0 }, fat: { type: 'number', minimum: 0 }, fiber: { type: 'number', minimum: 0, maximum: 100 } }, required: ['name', 'kcal', 'protein', 'carbs', 'fat'], additionalProperties: false },
         annotations: { readOnlyHint: false },
-        async execute(input) { if (!input?.name?.trim() || ['kcal', 'protein', 'carbs', 'fat'].some(k => !Number.isFinite(input[k]) || input[k] < 0)) throw new Error('Valeurs nutritionnelles invalides.'); const result = await api('products', { method: 'POST', body: JSON.stringify(input) }); await load(); return { id: result.id, name: input.name } }
+        async execute(input) { if (!input?.name?.trim() || ['kcal', 'protein', 'carbs', 'fat'].some(k => !Number.isFinite(input[k]) || input[k] < 0) || (input.fiber !== undefined && (!Number.isFinite(input.fiber) || input.fiber < 0 || input.fiber > 100))) throw new Error('Valeurs nutritionnelles invalides.'); const result = await api('products', { method: 'POST', body: JSON.stringify(input) }); await load(); return { id: result.id, name: input.name } }
     })
     await register({
         name: 'add_meal', title: 'Ajouter un repas', description: 'Ajouter au journal un produit en grammes ou une recette en portions.',
@@ -65,7 +66,7 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => webMcpLifecycle?.abort())
 watch(date, load)
-const totals = computed(() => state.value.meals.reduce((a, m) => { a.kcal += m.kcal; a.protein += m.protein; a.carbs += m.carbs; a.fat += m.fat; return a }, { kcal: 0, protein: 0, carbs: 0, fat: 0 }))
+const totals = computed(() => state.value.meals.reduce((a, m) => { a.kcal += m.kcal; a.protein += m.protein; a.carbs += m.carbs; a.fat += m.fat; if (m.fiber == null) a.fiberIncomplete = true; else { a.fiber += m.fiber; a.fiberKnown = true } return a }, { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, fiberKnown: false, fiberIncomplete: false }))
 const pct = computed(() => Math.min(100, Math.round(totals.value.kcal / Math.max(1, state.value.goal) * 100)))
 const remaining = computed(() => Math.max(0, Math.round(state.value.goal - totals.value.kcal)))
 const items = computed(() => meal.itemType === 'recipe' ? state.value.recipes : state.value.products)
@@ -85,32 +86,33 @@ function applyVegetablePreset() {
     const vegetable = vegetables.find(item => item.name === selectedVegetable.value)
     if (!vegetable) return
     selectedCommonFoodPreset.value = ''
-    Object.assign(product, { name: vegetable.name, brand: '', kcal: vegetable.kcal, protein: vegetable.protein, carbs: vegetable.carbs, fat: vegetable.fat })
+    Object.assign(product, { name: vegetable.name, brand: '', kcal: vegetable.kcal, protein: vegetable.protein, carbs: vegetable.carbs, fat: vegetable.fat, fiber: vegetable.fiber ?? '' })
 }
 function applyCommonFoodPreset() {
     const food = commonFoodPreset.value
     if (!food) return
     selectedVegetable.value = ''
-    Object.assign(product, { name: food.name, brand: food.brand, kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat })
+    Object.assign(product, { name: food.name, brand: food.brand, kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat, fiber: food.fiber ?? '' })
 }
 function applyDryYeastPreset() {
     selectedVegetable.value = ''
     selectedCommonFoodPreset.value = ''
     Object.assign(product, dryYeast)
+    product.fiber = dryYeast.fiber ?? ''
 }
 async function send(path, body, method = 'POST') { error.value = ''; try { busy.value = true; await api(path, { method, body: JSON.stringify(body) }); await load(); close(); notice.value = 'Enregistré.'; setTimeout(() => notice.value = '', 3000) } catch (e) { error.value = e.message } finally { busy.value = false } }
 async function saveProduct() {
     error.value = ''
     try {
         busy.value = true
-        const result = await api('products', { method: 'POST', body: JSON.stringify({ ...product, kcal: Number(product.kcal), protein: Number(product.protein), carbs: Number(product.carbs), fat: Number(product.fat) }) })
+        const result = await api('products', { method: 'POST', body: JSON.stringify({ ...product, kcal: Number(product.kcal), protein: Number(product.protein), carbs: Number(product.carbs), fat: Number(product.fat), fiber: product.fiber === '' ? null : product.fiber }) })
         await load()
         if (productForIngredient.value >= 0) {
             recipe.ingredients[productForIngredient.value].productId = result.id
             productForIngredient.value = -1
             modal.value = 'recipe'
         } else close()
-        Object.assign(product, { name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+        Object.assign(product, { name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '', fiber: '' })
         selectedVegetable.value = ''
         selectedCommonFoodPreset.value = ''
         notice.value = 'Produit enregistré.'
@@ -121,10 +123,22 @@ async function addReferenceProduct(reference) {
     error.value = ''
     try {
         busy.value = true
-        const { name, brand = '', kcal, protein, carbs, fat } = reference
-        await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat }) })
+        const { name, brand = '', kcal, protein, carbs, fat, fiber = null } = reference
+        await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat, fiber }) })
         await load()
         notice.value = `${name} ajouté à mes produits.`
+    } catch (e) { error.value = e.message }
+    finally { busy.value = false }
+}
+async function saveFiber(savedProduct) {
+    const value = fiberEdits[savedProduct.id] ?? (savedProduct.fiber ?? '')
+    error.value = ''
+    try {
+        busy.value = true
+        await api('products/' + encodeURIComponent(savedProduct.id), { method: 'PATCH', body: JSON.stringify({ fiber: value === '' ? null : value }) })
+        await load()
+        delete fiberEdits[savedProduct.id]
+        notice.value = `Fibres de ${savedProduct.name} enregistrées.`
     } catch (e) { error.value = e.message }
     finally { busy.value = false }
 }
@@ -138,8 +152,8 @@ async function saveReferenceMeal(reference, enteredCount, singular, plural) {
     try {
         let savedProduct = state.value.products.find(item => item.name === reference.name && item.brand === reference.brand)
         if (!savedProduct) {
-            const { name, brand, kcal, protein, carbs, fat } = reference
-            const { id } = await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat }) })
+            const { name, brand, kcal, protein, carbs, fat, fiber = null } = reference
+            const { id } = await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat, fiber }) })
             savedProduct = { id }
         }
         await api('meals', { method: 'POST', body: JSON.stringify({ date: date.value, mealType: meal.mealType, itemType: 'product', itemId: savedProduct.id, quantity: reference.grams * count }) })
@@ -161,7 +175,7 @@ function createIngredientProduct(index) {
     productForIngredient.value = index
     selectedVegetable.value = ''
     selectedCommonFoodPreset.value = ''
-    Object.assign(product, { name: recipe.ingredients[index].label || '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
+    Object.assign(product, { name: recipe.ingredients[index].label || '', brand: '', kcal: '', protein: '', carbs: '', fat: '', fiber: '' })
     const food = commonFoodForIngredient(recipe.ingredients[index].label)
     if (food) { selectedCommonFoodPreset.value = food.id; applyCommonFoodPreset() }
     else if (isDryYeastLabel(recipe.ingredients[index].label)) applyDryYeastPreset()
@@ -256,6 +270,7 @@ async function scanPhoto(event) {
                             <div class="macro-item"><b>{{ round(totals.carbs) }} g</b><span>Glucides</span></div>
                             <div class="macro-item"><b>{{ round(totals.fat) }} g</b><span>Lipides</span></div>
                         </div>
+                        <p class="fiber-summary">Fibres : {{ totals.fiberKnown ? `${round(totals.fiber)} g` : '—' }}<span v-if="totals.fiberIncomplete && totals.fiberKnown"> · total partiel</span></p>
                     </div>
                     <aside class="card side-card"><img src="/lunch-bowl.jpg" class="food-img"
                             alt="Bol repas avec légumes, céréales et protéines">
@@ -293,8 +308,9 @@ async function scanPhoto(event) {
                         <h3>{{ p.name }}</h3>
                         <p>{{ p.brand || 'Pour 100 g' }}</p>
                         <div class="nutrition"><span><b>{{ round(p.kcal) }}</b> kcal</span><span>P {{ round(p.protein)
-                                }} g</span><span>G {{ round(p.carbs) }} g</span><span>L {{ round(p.fat) }} g</span>
+                                }} g</span><span>G {{ round(p.carbs) }} g</span><span>L {{ round(p.fat) }} g</span><span>Fibres {{ p.fiber == null ? '—' : `${p.fiber} g` }}</span>
                         </div>
+                        <div class="fiber-edit"><label :for="`fiber-${p.id}`">Fibres / 100 g</label><input :id="`fiber-${p.id}`" type="number" min="0" max="100" step="0.01" :value="p.fiber ?? ''" placeholder="Inconnu" @input="fiberEdits[p.id] = $event.target.value"><button class="secondary" :disabled="busy" @click="saveFiber(p)">Enregistrer</button></div>
                         <div class="item-actions"><button class="secondary"
                                 @click="tab = 'journal'; open('meal'); meal.itemId = p.id">Ajouter au journal</button><button
                                 class="icon-button" :aria-label="'Supprimer ' + p.name"
@@ -308,7 +324,7 @@ async function scanPhoto(event) {
                         <article v-for="reference in referenceProducts" :key="reference.name" class="item-card">
                             <h3>{{ reference.name }}</h3>
                             <p>{{ reference.brand || 'Aliment courant' }} · pour 100 g</p>
-                            <div class="nutrition"><span><b>{{ reference.kcal }}</b> kcal</span><span>P {{ reference.protein }} g</span><span>G {{ reference.carbs }} g</span><span>L {{ reference.fat }} g</span></div>
+                            <div class="nutrition"><span><b>{{ reference.kcal }}</b> kcal</span><span>P {{ reference.protein }} g</span><span>G {{ reference.carbs }} g</span><span>L {{ reference.fat }} g</span><span>Fibres {{ reference.fiber == null ? '—' : `${reference.fiber} g` }}</span></div>
                             <p v-if="reference.grams" class="reference-serving">1 {{ reference.singular || 'cône' }} ≈ {{ reference.grams }} g · {{ round(reference.kcal * reference.grams / 100) }} kcal</p>
                             <p v-else-if="reference.name === dryYeast.name" class="reference-serving">5 g ≈ {{ round(reference.kcal * 5 / 100) }} kcal</p>
                             <div class="item-actions"><button class="secondary" :disabled="busy || savedReferenceProduct(reference)" @click="addReferenceProduct(reference)">{{ savedReferenceProduct(reference) ? 'Déjà dans Mes produits' : 'Ajouter à Mes produits' }}</button></div>
@@ -330,7 +346,7 @@ async function scanPhoto(event) {
                         <h3>{{ r.name }}</h3>
                         <p>{{ r.portions }} portion{{ r.portions > 1 ? 's' : '' }} · valeurs par portion</p>
                         <div class="nutrition"><span><b>{{ round(r.kcal) }}</b> kcal</span><span>P {{ round(r.protein)
-                                }} g</span><span>G {{ round(r.carbs) }} g</span><span>L {{ round(r.fat) }} g</span>
+                                }} g</span><span>G {{ round(r.carbs) }} g</span><span>L {{ round(r.fat) }} g</span><span>Fibres {{ r.fiber == null ? '—' : `${r.fiber} g` }}</span>
                         </div>
                         <details v-if="r.ingredients?.length || r.instructions" class="recipe-details">
                             <summary>Voir la recette</summary>
@@ -392,6 +408,8 @@ async function scanPhoto(event) {
                         <div v-for="f in [{ key: 'kcal', label: 'Calories (kcal)' }, { key: 'protein', label: 'Protéines (g)' }, { key: 'carbs', label: 'Glucides (g)' }, { key: 'fat', label: 'Lipides (g)' }]"
                             :key="f.key" class="field"><label :for="f.key">{{ f.label }}</label><input :id="f.key"
                                 v-model="product[f.key]" type="number" min="0" step="0.01" required></div>
+                        <div class="field"><label for="fiber">Fibres (g, facultatif)</label><input id="fiber"
+                                v-model="product.fiber" type="number" min="0" max="100" step="0.01" placeholder="Si indiqué sur l’étiquette"></div>
                     </div><button class="primary full" :disabled="busy || scanBusy">Enregistrer le produit</button>
                 </form>
                 <form v-else-if="modal === 'recipe'" @submit.prevent="saveRecipe">
