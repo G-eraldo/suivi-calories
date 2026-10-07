@@ -1,3 +1,8 @@
+# Unités des quantités
+
+- [x] Saisir et afficher les liquides en cl et les œufs en pièces dans les repas et recettes.
+- [x] Vérifier les conversions et la compilation.
+
 # Fibres et dépendances de sécurité
 
 - [x] Ajouter les fibres facultatives aux produits, recettes, repas, OCR et affichages, avec migration des données existantes.

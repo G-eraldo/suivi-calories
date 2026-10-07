@@ -5,6 +5,7 @@ import { vegetables } from '~/utils/vegetables.js'
 import { adelieCone, conesForGrams } from '~/utils/ice-cream.js'
 import { dryYeast, isDryYeastLabel } from '~/utils/dry-yeast.js'
 import { commonFoods, commonFoodForIngredient, unitsForGrams } from '~/utils/common-foods.js'
+import { quantityKind, quantityFromGrams, gramsFromQuantity, quantityText } from '~/utils/quantity-units.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -70,6 +71,8 @@ const totals = computed(() => state.value.meals.reduce((a, m) => { a.kcal += m.k
 const pct = computed(() => Math.min(100, Math.round(totals.value.kcal / Math.max(1, state.value.goal) * 100)))
 const remaining = computed(() => Math.max(0, Math.round(state.value.goal - totals.value.kcal)))
 const items = computed(() => meal.itemType === 'recipe' ? state.value.recipes : state.value.products)
+const mealProduct = computed(() => state.value.products.find(item => item.id === meal.itemId))
+const mealQuantityKind = computed(() => quantityKind(mealProduct.value?.name))
 const round = n => Math.round(Number(n) || 0)
 const mealIcon = t => ({ 'Petit-déjeuner': '☀️', 'Déjeuner': '🥗', 'Dîner': '🌙', 'Collation': '🍎' })[t] || '🍽️'
 function mealQuantityLabel(entry) {
@@ -78,8 +81,17 @@ function mealQuantityLabel(entry) {
     if (cones) return `${cones} cône${cones > 1 ? 's' : ''} (${entry.quantity} g)`
     const food = commonFoods.find(item => item.name === entry.item_name)
     const units = food ? unitsForGrams(food, entry.quantity) : null
-    return units ? `${units} ${units > 1 ? food.plural : food.singular} (${entry.quantity} g)` : `${round(entry.quantity)} g`
+    if (food?.id === 'egg') return quantityText(entry.quantity, food.name)
+    return units ? `${units} ${units > 1 ? food.plural : food.singular} (${entry.quantity} g)` : quantityText(entry.quantity, entry.item_name)
 }
+function ingredientKind(line) {
+    const productName = state.value.products.find(item => item.id === line.productId)?.name
+    return quantityKind(line.excluded ? line.label : productName || line.label)
+}
+function ingredientName(line) { return state.value.products.find(item => item.id === line.productId)?.name || line.label }
+function setIngredientQuantity(line, value) { line.grams = value === '' ? '' : gramsFromQuantity(value, ingredientKind(line)) }
+function selectMealProduct() { meal.quantity = mealQuantityKind.value === 'egg' ? 50 : 100 }
+function setMealQuantity(value) { meal.quantity = value === '' ? '' : gramsFromQuantity(value, mealQuantityKind.value) }
 function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
 function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = ''; selectedCommonFoodPreset.value = '' }
 function applyVegetablePreset() {
@@ -312,7 +324,7 @@ async function scanPhoto(event) {
                         </div>
                         <div class="fiber-edit"><label :for="`fiber-${p.id}`">Fibres / 100 g</label><input :id="`fiber-${p.id}`" type="number" min="0" max="100" step="0.01" :value="p.fiber ?? ''" placeholder="Inconnu" @input="fiberEdits[p.id] = $event.target.value"><button class="secondary" :disabled="busy" @click="saveFiber(p)">Enregistrer</button></div>
                         <div class="item-actions"><button class="secondary"
-                                @click="tab = 'journal'; open('meal'); meal.itemId = p.id">Ajouter au journal</button><button
+                                @click="tab = 'journal'; open('meal'); meal.itemId = p.id; selectMealProduct()">Ajouter au journal</button><button
                                 class="icon-button" :aria-label="'Supprimer ' + p.name"
                                 @click="removeItem('products', p.id)">×</button></div>
                     </article>
@@ -325,7 +337,7 @@ async function scanPhoto(event) {
                             <h3>{{ reference.name }}</h3>
                             <p>{{ reference.brand || 'Aliment courant' }} · pour 100 g</p>
                             <div class="nutrition"><span><b>{{ reference.kcal }}</b> kcal</span><span>P {{ reference.protein }} g</span><span>G {{ reference.carbs }} g</span><span>L {{ reference.fat }} g</span><span>Fibres {{ reference.fiber == null ? '—' : `${reference.fiber} g` }}</span></div>
-                            <p v-if="reference.grams" class="reference-serving">1 {{ reference.singular || 'cône' }} ≈ {{ reference.grams }} g · {{ round(reference.kcal * reference.grams / 100) }} kcal</p>
+                            <p v-if="reference.grams" class="reference-serving">1 {{ reference.singular || 'cône' }}{{ reference.id === 'egg' ? '' : ` ≈ ${reference.grams} g` }} · {{ round(reference.kcal * reference.grams / 100) }} kcal</p>
                             <p v-else-if="reference.name === dryYeast.name" class="reference-serving">5 g ≈ {{ round(reference.kcal * 5 / 100) }} kcal</p>
                             <div class="item-actions"><button class="secondary" :disabled="busy || savedReferenceProduct(reference)" @click="addReferenceProduct(reference)">{{ savedReferenceProduct(reference) ? 'Déjà dans Mes produits' : 'Ajouter à Mes produits' }}</button></div>
                         </article>
@@ -351,7 +363,7 @@ async function scanPhoto(event) {
                         <details v-if="r.ingredients?.length || r.instructions" class="recipe-details">
                             <summary>Voir la recette</summary>
                             <ul>
-                                <li v-for="(line, i) in r.ingredients" :key="i">{{ line.grams }} g de {{ line.name }}{{ line.excluded ? ' · non comptabilisé' : '' }}
+                                <li v-for="(line, i) in r.ingredients" :key="i">{{ quantityText(line.grams, line.name) }}{{ quantityKind(line.name) === 'egg' ? '' : ` de ${line.name}` }}{{ line.excluded ? ' · non comptabilisé' : '' }}
                                 </li>
                             </ul>
                             <p v-if="r.instructions" class="recipe-steps">{{ r.instructions }}</p>
@@ -392,7 +404,7 @@ async function scanPhoto(event) {
                             v-model="selectedCommonFoodPreset" @change="applyCommonFoodPreset">
                             <option value="">Choisir un aliment</option>
                             <option v-for="food in commonFoods" :key="food.id" :value="food.id">{{ food.name }}</option>
-                        </select><p v-if="commonFoodPreset" class="helper">Valeurs pour 100 g d’aliment cru, partie comestible. 1 {{ commonFoodPreset.singular }} ≈ {{ commonFoodPreset.grams }} g et {{ round(commonFoodPreset.kcal * commonFoodPreset.grams / 100) }} kcal. Poids moyen à ajuster si besoin. <a :href="`https://fdc.nal.usda.gov/food-details/${commonFoodPreset.fdcId}/nutrients`" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p></div>
+                        </select><p v-if="commonFoodPreset" class="helper">Valeurs pour 100 g d’aliment cru, partie comestible. 1 {{ commonFoodPreset.singular }}{{ commonFoodPreset.id === 'egg' ? '' : ` ≈ ${commonFoodPreset.grams} g` }} apporte {{ round(commonFoodPreset.kcal * commonFoodPreset.grams / 100) }} kcal. <a :href="`https://fdc.nal.usda.gov/food-details/${commonFoodPreset.fdcId}/nutrients`" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p></div>
                     <div class="upload"><b>Levure boulangère déshydratée</b>
                         <p class="helper">Valeur de référence : 325 kcal/100 g, soit environ 16 kcal pour 5 g. Les glucides USDA incluent les fibres. <a href="https://fdc.nal.usda.gov/food-details/175043/nutrients" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p>
                         <button type="button" class="secondary" @click="applyDryYeastPreset">Remplir avec ces valeurs</button>
@@ -434,16 +446,16 @@ async function scanPhoto(event) {
                     <p v-if="!state.products.length" class="tip">Ajoute d’abord un produit pour composer ta recette.</p>
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
                         <div v-if="line.label" class="source-ingredient">{{ line.original || line.label }} <span
-                                v-if="line.estimated">· poids estimé ou à préciser</span></div>
+                                v-if="line.estimated">· quantité estimée ou à préciser</span></div>
                         <div class="ingredient-row"><select v-model="line.productId" :required="!line.excluded" :disabled="line.excluded"
                                 :aria-label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))">
                                 <option value="" disabled>Choisir un produit</option>
                                 <option v-for="p in state.products" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? ' · ' + p.brand : '' }}</option>
-                            </select><input v-model="line.grams" type="number" min="0.1" step="0.1" required
-                                :aria-label="'Grammes pour ' + (line.label || 'ingrédient ' + (i + 1))" placeholder="g"><button
+                            </select><input :value="line.grams === '' ? '' : quantityFromGrams(line.grams, ingredientKind(line))" @input="setIngredientQuantity(line, $event.target.value)" type="number" min="0.1" step="0.1" required
+                                :aria-label="'Quantité en ' + (ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'grammes') + ' pour ' + (ingredientName(line) || 'ingrédient ' + (i + 1))" :placeholder="ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g'"><button
                                 type="button" aria-label="Retirer cet ingrédient"
                                 :disabled="recipe.ingredients.length === 1"
-                                @click="recipe.ingredients.splice(i, 1)">×</button></div><button
+                                @click="recipe.ingredients.splice(i, 1)">×</button></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}</p><button
                             v-if="line.label && !line.productId && !line.excluded" type="button" class="link-button"
                             @click="createIngredientProduct(i)">Créer « {{ line.label }} » comme produit</button>
                         <label class="ingredient-exclude"><input v-model="line.excluded" type="checkbox" @change="line.productId = ''">Ne pas comptabiliser cet ingrédient (sans produit)</label>
@@ -453,7 +465,7 @@ async function scanPhoto(event) {
                     <div class="field"><label for="r-instructions">Préparation (facultatif)</label><textarea
                             id="r-instructions" v-model="recipe.instructions" rows="5"
                             placeholder="Étapes de préparation…"></textarea></div>
-                    <p class="tip">Le calcul utilise seulement les ingrédients associés à un produit. Les ingrédients marqués « Ne pas comptabiliser » restent dans la recette, sans calories ajoutées.</p><button class="primary full"
+                    <p class="tip">Pour les liquides, 1 cl correspond approximativement à 10 g dans le calcul. Les ingrédients marqués « Ne pas comptabiliser » restent dans la recette, sans calories ajoutées.</p><button class="primary full"
                         :disabled="busy || importBusy || !state.products.length">Enregistrer la recette</button>
                 </form>
                 <form v-else-if="modal === 'meal'" @submit.prevent="saveMeal">
@@ -474,7 +486,7 @@ async function scanPhoto(event) {
                         <div class="field"><label for="m-common-food">Aliment</label><select id="m-common-food" v-model="selectedCommonMeal">
                                 <option v-for="food in commonFoods" :key="food.id" :value="food.id">{{ food.name }}</option>
                             </select></div>
-                        <p v-if="commonMealFood" class="helper">1 {{ commonMealFood.singular }} ≈ {{ commonMealFood.grams }} g de partie comestible, soit {{ round(commonMealFood.kcal * commonMealFood.grams / 100) }} kcal. Pour un autre poids, utilise le champ en grammes ci-dessous.</p>
+                        <p v-if="commonMealFood" class="helper">1 {{ commonMealFood.singular }}{{ commonMealFood.id === 'egg' ? '' : ` ≈ ${commonMealFood.grams} g de partie comestible` }}, soit {{ round(commonMealFood.kcal * commonMealFood.grams / 100) }} kcal. Pour une autre quantité, utilise le champ ci-dessous.</p>
                         <div class="field"><label for="m-common-count">Nombre de pièces</label><input id="m-common-count"
                                 v-model="commonMealCount" type="number" min="1" max="99" step="1"></div>
                         <button type="button" class="secondary" :disabled="busy" @click="saveCommonFoodMeal">Ajouter au journal</button>
@@ -486,15 +498,15 @@ async function scanPhoto(event) {
                             <option value="recipe">Une recette</option>
                         </select></div>
                     <div class="field"><label for="m-item">{{ meal.itemType === 'recipe' ? 'Recette' : 'Produit'
-                            }}</label><select id="m-item" v-model="meal.itemId" required>
+                            }}</label><select id="m-item" v-model="meal.itemId" @change="meal.itemType === 'product' && selectMealProduct()" required>
                             <option value="" disabled>Choisir</option>
                             <option v-for="it in items" :key="it.id" :value="it.id">{{ it.name }}</option>
                         </select></div>
                     <p v-if="!items.length" class="tip">Aucun élément disponible. Ajoute d’abord {{
                         meal.itemType === 'recipe' ?'une recette':'un produit' }}.</p>
-                    <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : 'Quantité (g)'
-                            }}</label><input id="m-quantity" v-model="meal.quantity" type="number" min="0.1" step="0.1"
-                            required></div><button class="primary full" :disabled="busy || !items.length">Ajouter au
+                    <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : mealQuantityKind === 'egg' ? 'Nombre d’œufs' : mealQuantityKind === 'liquid' ? 'Quantité (cl)' : 'Quantité (g)'
+                            }}</label><input id="m-quantity" :value="meal.itemType === 'recipe' || meal.quantity === '' ? meal.quantity : quantityFromGrams(meal.quantity, mealQuantityKind)" @input="meal.itemType === 'recipe' ? meal.quantity = $event.target.value : setMealQuantity($event.target.value)" type="number" min="0.1" step="0.1"
+                            required></div><p v-if="meal.itemType === 'product' && mealQuantityKind === 'liquid'" class="helper">1 cl correspond approximativement à 10 g pour le calcul nutritionnel.</p><button class="primary full" :disabled="busy || !items.length">Ajouter au
                         journal</button>
                 </form>
                 <form v-else @submit.prevent="saveGoal">
