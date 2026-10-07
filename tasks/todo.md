@@ -1,3 +1,8 @@
+# Correction du build Dokploy
+
+- [x] Retirer l’override incompatible de simple-git et synchroniser le lockfile.
+- [x] Vérifier une installation propre et le build avec Node 22.14.0, puis pousser sur main.
+
 # Base nutritionnelle des liquides
 
 - [x] Indiquer 100 ml pour les produits liquides et faire correspondre les explications aux calculs en volume.

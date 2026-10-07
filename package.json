@@ -17,8 +17,5 @@
   "devDependencies": {
     "nuxt": "^4.0.0",
     "tesseract.js": "^6.0.0"
-  },
-  "overrides": {
-    "simple-git": "4.0.2"
   }
 }

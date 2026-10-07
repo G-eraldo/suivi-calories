@@ -9,3 +9,4 @@
 - Pour un ingrédient courant sans étiquette, proposer une valeur nutritionnelle de référence sourcée et modifiable.
 - Afficher les références préremplies dans la rubrique où l’utilisateur cherche ses produits, même avant leur enregistrement personnel.
 - Pour un liquide saisi en cl, afficher les valeurs nutritionnelles par 100 ml et calculer la portion en ml, sans présenter le volume comme une masse réelle.
+- Après un changement de dépendance, vérifier le build depuis `npm ci` avec la version de Node du déploiement ; un `node_modules` local peut masquer un lockfile incompatible.
