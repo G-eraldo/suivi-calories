@@ -1,3 +1,9 @@
+# Recherche dans les sélecteurs mobiles
+
+- [x] Créer un sélecteur avec recherche visible dans le menu ouvert.
+- [x] L’utiliser pour les produits des recettes et les produits/recettes du journal.
+- [x] Vérifier sélection, validation, clavier, présentation responsive et build.
+
 # Recherche dans les listes
 
 - [x] Ajouter une recherche aux produits, aliments préremplis et recettes.

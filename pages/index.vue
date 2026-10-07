@@ -23,16 +23,11 @@ const referenceProducts = [...vegetables, ...commonFoods, dryYeast, adelieCone]
 const productSearch = ref('')
 const referenceSearch = ref('')
 const recipeSearch = ref('')
-const mealSearch = ref('')
 const searchText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim()
 const matchesSearch = (item, query) => searchText(query).split(/\s+/).every(word => searchText(`${item.name} ${item.brand || ''}`).includes(word))
 const filteredProducts = computed(() => state.value.products.filter(item => matchesSearch(item, productSearch.value)))
 const filteredReferences = computed(() => referenceProducts.filter(item => matchesSearch(item, referenceSearch.value)))
 const filteredRecipes = computed(() => state.value.recipes.filter(item => matchesSearch(item, recipeSearch.value)))
-const matchingMealItems = computed(() => items.value.filter(item => matchesSearch(item, mealSearch.value)))
-const visibleMealItems = computed(() => items.value.filter(item => item.id === meal.itemId || matchesSearch(item, mealSearch.value)))
-const matchingIngredientProducts = line => state.value.products.filter(item => matchesSearch(item, line.searchTerm))
-const visibleIngredientProducts = line => state.value.products.filter(item => item.id === line.productId || matchesSearch(item, line.searchTerm))
 const savedReferenceProduct = reference => state.value.products.some(item => item.name === reference.name && (item.brand || '') === (reference.brand || ''))
 const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '', fiber: '', basisUnit: 'ml' })
 const barcodeCode = ref('')
@@ -183,7 +178,7 @@ function toggleFavorite(entry) {
     favorites.value = isFavorite(entry) ? favorites.value.filter(item => item.id !== entry.id) : [entry, ...favorites.value]
     localStorage.setItem('miametrie-favorites', JSON.stringify(favorites.value))
 }
-function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'recipe') { editingRecipeId.value = ''; importText.value = ''; Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }) } if (name === 'meal') { mealSearch.value = ''; meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
+function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'recipe') { editingRecipeId.value = ''; importText.value = ''; Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }) } if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
 function openRecipeEdit(saved) { error.value = ''; notice.value = ''; importText.value = ''; editingRecipeId.value = saved.id; Object.assign(recipe, recipeForEditing(saved, state.value.products)); modal.value = 'recipe' }
 function stopBarcodeScan() { barcodeControls?.stop(); barcodeControls = undefined; barcodeScanning.value = false }
 async function lookupBarcode() {
@@ -285,11 +280,12 @@ async function saveFiber(savedProduct) {
     finally { busy.value = false }
 }
 async function saveRecipe() {
+    if (recipe.ingredients.some(line => !line.excluded && !line.productId)) { error.value = 'Choisis un produit pour chaque ingrédient comptabilisé.'; return }
     const id = editingRecipeId.value
     await send(id ? `recipes/${encodeURIComponent(id)}` : 'recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), basisUnit: ingredientBasisUnit(x), label: x.label, excluded: x.excluded === true })) }, id ? 'PATCH' : 'POST')
     if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' }
 }
-async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
+async function saveMeal() { if (!meal.itemId) { error.value = `Choisis ${meal.itemType === 'recipe' ? 'une recette' : 'un produit'}.`; return } await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
 async function updateMeal() {
     await send(`meals/${encodeURIComponent(editMeal.id)}`, { date: editMeal.date, mealType: editMeal.mealType, quantity: Number(editMeal.quantity) }, 'PATCH')
 }
@@ -629,16 +625,13 @@ async function scanPhoto(event) {
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
                         <div v-if="line.label" class="source-ingredient">{{ line.original || line.label }} <span
                                 v-if="line.estimated">· quantité estimée ou à préciser</span></div>
-                        <div v-if="!line.excluded && state.products.length" class="field ingredient-search"><label :for="'r-search-' + i">Rechercher un produit pour {{ line.label || `l’ingrédient ${i + 1}` }}</label><input :id="'r-search-' + i" v-model="line.searchTerm" type="search" placeholder="Nom ou marque" autocomplete="off"></div>
-                        <div class="ingredient-row"><select v-model="line.productId" :required="!line.excluded" :disabled="line.excluded" @change="selectIngredientProduct(line)"
-                                :aria-label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))">
-                                <option value="" disabled>Choisir un produit</option>
-                                <option v-for="p in visibleIngredientProducts(line)" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? ' · ' + p.brand : '' }}</option>
-                            </select><input :value="line.grams === '' ? '' : quantityFromGrams(line.grams, ingredientKind(line))" @input="setIngredientQuantity(line, $event.target.value)" type="number" min="0.01" step="0.01" required
+                        <div class="ingredient-row"><SearchSelect :id="'r-product-' + i" :model-value="line.productId" :required="!line.excluded"
+                                :options="state.products" :disabled="line.excluded" :label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))"
+                                placeholder="Choisir un produit" @update:model-value="value => { line.productId = value; selectIngredientProduct(line) }" /><input :value="line.grams === '' ? '' : quantityFromGrams(line.grams, ingredientKind(line))" @input="setIngredientQuantity(line, $event.target.value)" type="number" min="0.01" step="0.01" required
                                 :aria-label="'Quantité en ' + (ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'grammes') + ' pour ' + (ingredientName(line) || 'ingrédient ' + (i + 1))" :placeholder="ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g'"><button
                                 type="button" aria-label="Retirer cet ingrédient"
                                 :disabled="recipe.ingredients.length === 1"
-                                @click="recipe.ingredients.splice(i, 1)">×</button></div><p v-if="line.searchTerm && !matchingIngredientProducts(line).length" class="helper" role="status">Aucun produit trouvé.</p><div v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid'" class="field ingredient-unit"><label :for="'r-unit-' + i">Unité pour {{ ingredientName(line) }}</label><select :id="'r-unit-' + i" :value="ingredientBasisUnit(line)" @change="setIngredientBasisUnit(line, $event.target.value)"><option value="g">g · valeurs pour 100 g</option><option value="ml">cl · valeurs pour 100 ml</option></select></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}{{ ingredientStarchState(line) === 'raw' ? ' avant cuisson, pour toute la recette' : '' }}</p><p v-if="line.unitChanged" class="tip">L’unité de ce produit a changé depuis l’enregistrement de la recette. Ressaisis sa quantité en {{ ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}.</p><p v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid' && ingredientBasisUnit(line) !== ingredientProduct(line)?.basis_unit" class="tip">La fiche « {{ ingredientName(line) }} » est réglée sur 100 {{ ingredientProduct(line)?.basis_unit }}. Ici, le calcul utilisera {{ ingredientProduct(line)?.kcal }} kcal pour 100 {{ ingredientBasisUnit(line) }}. Vérifie cette valeur sur l’étiquette.</p><p v-if="ingredientStarchState(line) === 'cooked'" class="helper">Ce produit est cuit : saisis le poids après cuisson, avec ses valeurs pour 100 g cuits.</p><p v-else-if="ingredientStarchState(line) === 'unknown'" class="helper">{{ starchKind(ingredientName(line)) }} : vérifie si ce produit est cru ou cuit avant de saisir son poids.</p><button
+                                @click="recipe.ingredients.splice(i, 1)">×</button></div><div v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid'" class="field ingredient-unit"><label :for="'r-unit-' + i">Unité pour {{ ingredientName(line) }}</label><select :id="'r-unit-' + i" :value="ingredientBasisUnit(line)" @change="setIngredientBasisUnit(line, $event.target.value)"><option value="g">g · valeurs pour 100 g</option><option value="ml">cl · valeurs pour 100 ml</option></select></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}{{ ingredientStarchState(line) === 'raw' ? ' avant cuisson, pour toute la recette' : '' }}</p><p v-if="line.unitChanged" class="tip">L’unité de ce produit a changé depuis l’enregistrement de la recette. Ressaisis sa quantité en {{ ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}.</p><p v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid' && ingredientBasisUnit(line) !== ingredientProduct(line)?.basis_unit" class="tip">La fiche « {{ ingredientName(line) }} » est réglée sur 100 {{ ingredientProduct(line)?.basis_unit }}. Ici, le calcul utilisera {{ ingredientProduct(line)?.kcal }} kcal pour 100 {{ ingredientBasisUnit(line) }}. Vérifie cette valeur sur l’étiquette.</p><p v-if="ingredientStarchState(line) === 'cooked'" class="helper">Ce produit est cuit : saisis le poids après cuisson, avec ses valeurs pour 100 g cuits.</p><p v-else-if="ingredientStarchState(line) === 'unknown'" class="helper">{{ starchKind(ingredientName(line)) }} : vérifie si ce produit est cru ou cuit avant de saisir son poids.</p><button
                             v-if="line.label && !line.productId && !line.excluded" type="button" class="link-button"
                             @click="createIngredientProduct(i)">Créer « {{ line.label }} » comme produit</button>
                         <label class="ingredient-exclude"><input v-model="line.excluded" type="checkbox" @change="line.productId = ''">Ne pas comptabiliser cet ingrédient (sans produit)</label>
@@ -676,17 +669,15 @@ async function scanPhoto(event) {
                     </div>
                     <div class="field"><label for="m-itemtype">Ajouter</label><select id="m-itemtype"
                             v-model="meal.itemType"
-                            @change="mealSearch = ''; meal.itemId = ''; meal.quantity = meal.itemType === 'recipe' ? 1 : 100">
+                            @change="meal.itemId = ''; meal.quantity = meal.itemType === 'recipe' ? 1 : 100">
                             <option value="product">Un produit</option>
                             <option value="recipe">Une recette</option>
                         </select></div>
-                    <div v-if="items.length" class="field"><label for="m-search">Rechercher {{ meal.itemType === 'recipe' ? 'une recette' : 'un produit' }}</label><input id="m-search" v-model="mealSearch" type="search" :placeholder="meal.itemType === 'recipe' ? 'Nom de la recette' : 'Nom ou marque'" autocomplete="off"></div>
                     <div class="field"><label for="m-item">{{ meal.itemType === 'recipe' ? 'Recette' : 'Produit'
-                            }}</label><select id="m-item" v-model="meal.itemId" @change="meal.itemType === 'product' && selectMealProduct()" required>
-                            <option value="" disabled>Choisir</option>
-                            <option v-for="it in visibleMealItems" :key="it.id" :value="it.id">{{ it.name }}</option>
-                        </select></div>
-                    <p v-if="mealSearch && !matchingMealItems.length" class="helper" role="status">{{ meal.itemType === 'recipe' ? 'Aucune recette trouvée.' : 'Aucun produit trouvé.' }}</p>
+                            }}</label><SearchSelect id="m-item" :model-value="meal.itemId" :options="items" required
+                            :label="meal.itemType === 'recipe' ? 'Recette' : 'Produit'"
+                            :search-placeholder="meal.itemType === 'recipe' ? 'Nom de la recette' : 'Nom ou marque'"
+                            @update:model-value="value => { meal.itemId = value; if (meal.itemType === 'product') selectMealProduct() }" /></div>
                     <p v-if="!items.length" class="tip">Aucun élément disponible. Ajoute d’abord {{
                         meal.itemType === 'recipe' ?'une recette':'un produit' }}.</p>
                     <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : mealQuantityKind === 'egg' ? 'Nombre d’œufs' : mealQuantityKind === 'liquid' ? 'Quantité (cl)' : starchState(mealProduct?.name) === 'raw' ? 'Quantité crue (g)' : starchState(mealProduct?.name) === 'cooked' ? 'Quantité cuite (g)' : 'Quantité (g)'

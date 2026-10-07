@@ -11,3 +11,4 @@
 - Pour un liquide saisi en cl, afficher les valeurs nutritionnelles par 100 ml et calculer la portion en ml, sans présenter le volume comme une masse réelle.
 - Quand une quantité peut être mesurée dans plusieurs unités, placer le choix d’unité dans le formulaire où cette quantité est saisie.
 - Après un changement de dépendance, vérifier le build depuis `npm ci` avec la version de Node du déploiement ; un `node_modules` local peut masquer un lockfile incompatible.
+- Sur mobile, un `<select>` natif ne peut pas afficher une recherche dans son menu ; utiliser un sélecteur personnalisé lorsque la recherche doit être intégrée à la liste ouverte.
