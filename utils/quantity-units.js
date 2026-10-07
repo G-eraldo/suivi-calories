@@ -1,7 +1,7 @@
 const normalize = value => String(value || '').replace(/œ/gi, 'oe').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
-// The persisted `grams` field holds milliliters for liquids. This keeps existing
-// entries compatible while nutrition values for liquids are interpreted per 100 ml.
+// The persisted `grams` field holds the chosen base amount: grams or milliliters.
+// A liquid quantity in cl is converted to ml before it is stored.
 
 export function quantityKind(name) {
   const label = normalize(name)

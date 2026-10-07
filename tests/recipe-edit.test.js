@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createHandler } from '../server/worker.js'
 import { recipeForEditing } from '../utils/recipe-edit.js'
 
-function recipeDb(ownsRecipe = true) {
+function recipeDb(ownsRecipe = true, oilBasis = 'g') {
   const writes = []
   return {
     writes,
@@ -12,7 +12,7 @@ function recipeDb(ownsRecipe = true) {
         async first() {
           if (sql.includes('FROM recipes')) return ownsRecipe ? { id: 'recipe-1' } : null
           if (sql.includes('FROM products') && params[0] === 'oil')
-            return { id: 'oil', name: "Huile d'olive", kcal: 899, protein: 0, carbs: 0, fat: 100, fiber: null, basis_unit: 'g' }
+            return { id: 'oil', name: "Huile d'olive", kcal: 899, protein: 0, carbs: 0, fat: 100, fiber: null, basis_unit: oilBasis }
           return null
         },
         async run() { writes.push({ sql, params }) }
@@ -47,6 +47,19 @@ test('refuse de modifier une recette absente du compte et une quantité invalide
   const invalid = recipeDb()
   assert.equal((await edit(invalid, [{ productId: 'oil', grams: 0 }])).status, 400)
   assert.equal(invalid.writes.length, 0)
+})
+
+test('permet de choisir 1 g d’huile depuis la recette même si sa fiche est en ml', async () => {
+  const db = recipeDb(true, 'ml')
+  const response = await edit(db, [{ productId: 'oil', grams: 1, basisUnit: 'g' }])
+  assert.equal(response.status, 200)
+  assert.equal(db.writes[0].params[3], 4.5)
+  const saved = JSON.parse(db.writes[0].params[2]).ingredients[0]
+  assert.equal(saved.basisUnit, 'g')
+  assert.equal(saved.unitOverride, true)
+  const reopened = recipeForEditing({ name: 'Huile', portions: 2, ingredients: [saved] }, [{ id: 'oil', name: "Huile d'olive", basis_unit: 'ml' }])
+  assert.equal(reopened.ingredients[0].basisUnit, 'g')
+  assert.equal(reopened.ingredients[0].grams, 1)
 })
 
 test('préremplit la recette et demande une nouvelle quantité quand un liquide passe de ml à g', () => {

@@ -1,3 +1,9 @@
+# Choix de l’unité dans les ingrédients
+
+- [x] Ajouter g/cl à côté de chaque ingrédient liquide et conserver le choix à l’édition.
+- [x] Calculer la recette selon l’unité explicitement choisie et signaler une divergence avec la fiche produit.
+- [x] Vérifier le cas de 1 g d’huile, les autres ingrédients, les tests et le build.
+
 # Modification des recettes
 
 - [x] Préremplir le formulaire depuis une recette enregistrée et signaler les unités d’ingrédients à revérifier.

@@ -144,10 +144,20 @@ function mealQuantityLabel(entry) {
     if (food?.id === 'egg') return quantityText(entry.quantity, food.name)
     return units ? `${units} ${units > 1 ? food.plural : food.singular} (${entry.quantity} g)` : quantityText(entry.quantity, entry.item_name, entry.basis_unit)
 }
+function ingredientProduct(line) { return state.value.products.find(item => item.id === line.productId) }
+function ingredientBasisUnit(line) { return line.basisUnit || ingredientProduct(line)?.basis_unit || 'ml' }
 function ingredientKind(line) {
-    const savedProduct = state.value.products.find(item => item.id === line.productId)
-    return line.excluded ? quantityKind(line.label) : productQuantityKind(savedProduct || { name: line.label })
+    const savedProduct = ingredientProduct(line)
+    if (line.excluded) return quantityKind(line.label)
+    if (quantityKind(savedProduct?.name || line.label) === 'liquid') return ingredientBasisUnit(line) === 'g' ? 'solid' : 'liquid'
+    return productQuantityKind(savedProduct || { name: line.label })
 }
+function selectIngredientProduct(line) {
+    const selected = ingredientProduct(line)
+    if (quantityKind(selected?.name) === 'liquid') line.basisUnit = ['g', 'kg'].includes(line.unit) ? 'g' : ['ml', 'cl', 'l', 'litre', 'litres'].includes(line.unit) ? 'ml' : selected.basis_unit
+    else line.basisUnit = 'g'
+}
+function setIngredientBasisUnit(line, unit) { if (ingredientBasisUnit(line) === unit) return; line.basisUnit = unit; line.grams = ''; line.unitChanged = false }
 function ingredientName(line) { return state.value.products.find(item => item.id === line.productId)?.name || line.label }
 function ingredientStarchState(line) { return starchState(state.value.products.find(item => item.id === line.productId)?.name) }
 function setIngredientQuantity(line, value) { line.grams = value === '' ? '' : gramsFromQuantity(value, ingredientKind(line)) }
@@ -263,7 +273,7 @@ async function saveFiber(savedProduct) {
 }
 async function saveRecipe() {
     const id = editingRecipeId.value
-    await send(id ? `recipes/${encodeURIComponent(id)}` : 'recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), label: x.label, excluded: x.excluded === true })) }, id ? 'PATCH' : 'POST')
+    await send(id ? `recipes/${encodeURIComponent(id)}` : 'recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), basisUnit: ingredientBasisUnit(x), label: x.label, excluded: x.excluded === true })) }, id ? 'PATCH' : 'POST')
     if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' }
 }
 async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
@@ -306,7 +316,7 @@ async function removeItem(type, id) {
         localStorage.setItem('miametrie-favorites', JSON.stringify(favorites.value))
     }
 }
-function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '', excluded: false }) }
+function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, basisUnit: '', label: '', excluded: false }) }
 function createIngredientProduct(index) {
     productForIngredient.value = index
     selectedVegetable.value = ''
@@ -326,7 +336,8 @@ function importRecipe() {
     if (parsed.instructions) recipe.instructions = parsed.instructions
     recipe.ingredients = parsed.ingredients.map(line => {
         const excluded = /^eau(?:\b|\s)/i.test(line.label.trim())
-        return { productId: excluded ? '' : matchProduct(line.label, state.value.products)?.id || '', grams: line.grams || '', label: line.label, original: line.original, estimated: line.estimated, excluded }
+        const productId = excluded ? '' : matchProduct(line.label, state.value.products)?.id || ''
+        return { productId, grams: line.grams || '', basisUnit: ['g', 'kg'].includes(line.unit) ? 'g' : ['ml', 'cl', 'l', 'litre', 'litres'].includes(line.unit) ? 'ml' : '', unit: line.unit, label: line.label, original: line.original, estimated: line.estimated, excluded }
     })
     importInfo.value = `${parsed.ingredients.length} ingrédient${parsed.ingredients.length > 1 ? 's' : ''} détecté${parsed.ingredients.length > 1 ? 's' : ''}. Vérifie les produits et les quantités avant d’enregistrer.`
 }
@@ -599,7 +610,7 @@ async function scanPhoto(event) {
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
                         <div v-if="line.label" class="source-ingredient">{{ line.original || line.label }} <span
                                 v-if="line.estimated">· quantité estimée ou à préciser</span></div>
-                        <div class="ingredient-row"><select v-model="line.productId" :required="!line.excluded" :disabled="line.excluded"
+                        <div class="ingredient-row"><select v-model="line.productId" :required="!line.excluded" :disabled="line.excluded" @change="selectIngredientProduct(line)"
                                 :aria-label="'Produit pour ' + (line.label || 'ingrédient ' + (i + 1))">
                                 <option value="" disabled>Choisir un produit</option>
                                 <option v-for="p in state.products" :key="p.id" :value="p.id">{{ p.name }}{{ p.brand ? ' · ' + p.brand : '' }}</option>
@@ -607,7 +618,7 @@ async function scanPhoto(event) {
                                 :aria-label="'Quantité en ' + (ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'grammes') + ' pour ' + (ingredientName(line) || 'ingrédient ' + (i + 1))" :placeholder="ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g'"><button
                                 type="button" aria-label="Retirer cet ingrédient"
                                 :disabled="recipe.ingredients.length === 1"
-                                @click="recipe.ingredients.splice(i, 1)">×</button></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}{{ ingredientStarchState(line) === 'raw' ? ' avant cuisson, pour toute la recette' : '' }}</p><p v-if="line.unitChanged" class="tip">L’unité de ce produit a changé depuis l’enregistrement de la recette. Ressaisis sa quantité en {{ ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}.</p><p v-if="ingredientStarchState(line) === 'cooked'" class="helper">Ce produit est cuit : saisis le poids après cuisson, avec ses valeurs pour 100 g cuits.</p><p v-else-if="ingredientStarchState(line) === 'unknown'" class="helper">{{ starchKind(ingredientName(line)) }} : vérifie si ce produit est cru ou cuit avant de saisir son poids.</p><button
+                                @click="recipe.ingredients.splice(i, 1)">×</button></div><div v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid'" class="field ingredient-unit"><label :for="'r-unit-' + i">Unité pour {{ ingredientName(line) }}</label><select :id="'r-unit-' + i" :value="ingredientBasisUnit(line)" @change="setIngredientBasisUnit(line, $event.target.value)"><option value="g">g · valeurs pour 100 g</option><option value="ml">cl · valeurs pour 100 ml</option></select></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}{{ ingredientStarchState(line) === 'raw' ? ' avant cuisson, pour toute la recette' : '' }}</p><p v-if="line.unitChanged" class="tip">L’unité de ce produit a changé depuis l’enregistrement de la recette. Ressaisis sa quantité en {{ ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}.</p><p v-if="!line.excluded && quantityKind(ingredientProduct(line)?.name) === 'liquid' && ingredientBasisUnit(line) !== ingredientProduct(line)?.basis_unit" class="tip">La fiche « {{ ingredientName(line) }} » est réglée sur 100 {{ ingredientProduct(line)?.basis_unit }}. Ici, le calcul utilisera {{ ingredientProduct(line)?.kcal }} kcal pour 100 {{ ingredientBasisUnit(line) }}. Vérifie cette valeur sur l’étiquette.</p><p v-if="ingredientStarchState(line) === 'cooked'" class="helper">Ce produit est cuit : saisis le poids après cuisson, avec ses valeurs pour 100 g cuits.</p><p v-else-if="ingredientStarchState(line) === 'unknown'" class="helper">{{ starchKind(ingredientName(line)) }} : vérifie si ce produit est cru ou cuit avant de saisir son poids.</p><button
                             v-if="line.label && !line.productId && !line.excluded" type="button" class="link-button"
                             @click="createIngredientProduct(i)">Créer « {{ line.label }} » comme produit</button>
                         <label class="ingredient-exclude"><input v-model="line.excluded" type="checkbox" @change="line.productId = ''">Ne pas comptabiliser cet ingrédient (sans produit)</label>

@@ -244,12 +244,16 @@ async function api(request, env, url) {
           owner,
         );
         if (!p) return fail("Un produit de la recette est introuvable.");
+        const liquid = quantityKind(p.name) === 'liquid';
+        const basisUnit = liquid ? (line.basisUnit || p.basis_unit) : 'g';
+        if (!['g', 'ml'].includes(basisUnit)) return fail("Choisis g ou cl pour cet ingrédient liquide.");
         // `grams` is the product's base quantity: grams for 100 g labels,
         // milliliters for 100 ml labels. The client converts cl to ml.
+        // A liquid ingredient can explicitly override the product's label base.
         for (const key of Object.keys(totals))
           totals[key] += (p[key] * grams) / 100;
         fibers.push(p.fiber == null ? null : (p.fiber * grams) / 100);
-        saved.push({ productId: p.id, name: p.name, grams, basisUnit: p.basis_unit });
+        saved.push({ productId: p.id, name: p.name, grams, basisUnit, unitOverride: liquid && basisUnit !== p.basis_unit });
       }
       if (saved.every((line) => line.excluded))
         return fail("Sélectionne au moins un produit comptabilisé pour la recette.");
