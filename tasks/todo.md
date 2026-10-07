@@ -1,3 +1,15 @@
+# Affichage des repas sur mobile
+
+- [x] Regrouper les aliments du journal par moment de repas dans une seule carte.
+- [x] Rendre chaque ligne et ses actions lisibles sur petit écran.
+- [x] Vérifier les règles responsive, le regroupement et la compilation.
+
+# Unité des liquides
+
+- [x] Choisir la base nutritionnelle des liquides (100 g ou 100 ml) sur chaque produit, y compris les produits existants.
+- [x] Saisir les quantités correspondantes en g ou cl dans les recettes et le journal.
+- [x] Vérifier le cas de l’huile pesée en grammes et les parcours existants en cl.
+
 # Recherche par code-barres
 
 - [x] Lire un code avec la caméra ou par saisie manuelle.

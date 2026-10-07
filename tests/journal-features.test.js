@@ -42,7 +42,7 @@ test('dupliquer un repas reprend son instantané, même sans consulter le produi
   const db = mockDb(meal)
   const response = await request(db, 'POST', 'meals/m1/duplicate', { date: '2026-10-07', mealType: 'Petit-déjeuner' })
   assert.equal(response.status, 201)
-  assert.deepEqual(db.writes[0].params.slice(2, 13), ['2026-10-07', 'Petit-déjeuner', 'product', 'p1', 'Lait', 500, 235, 16.5, 24, 8, null])
+  assert.deepEqual(db.writes[0].params.slice(2, 14), ['2026-10-07', 'Petit-déjeuner', 'product', 'p1', 'Lait', 500, null, 235, 16.5, 24, 8, null])
 })
 
 test('un repas absent du compte ne peut pas être corrigé ou dupliqué', async () => {

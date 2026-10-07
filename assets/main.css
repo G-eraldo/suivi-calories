@@ -267,43 +267,80 @@ button:disabled {
 }
 .meal-list {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
-.meal {
+.meal-group {
+  min-width: 0;
+  overflow: hidden;
+  background: white;
+  border: 1px solid #e0e9e2;
+  border-radius: 18px;
+  box-shadow: 0 4px 18px rgba(15, 55, 50, 0.025);
+}
+.meal-group-head {
   display: flex;
   align-items: center;
-  gap: 14px;
-  background: white;
-  border: 1px solid #e6ebe7;
-  border-radius: 15px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 15px 18px;
+  background: #f2f7ef;
+}
+.meal-group-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.meal-group-name h3 {
+  margin: 0;
+  font: 800 17px Manrope, sans-serif;
+}
+.meal-count {
+  color: #6f837b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.meal-group-cal {
+  white-space: nowrap;
+  font: 800 16px Manrope, sans-serif;
 }
 .meal-icon {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 10px;
   background: #edf4e6;
   display: grid;
   place-items: center;
-  font-size: 22px;
+  font-size: 20px;
+}
+.meal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 16px;
+  padding: 13px 18px;
+}
+.meal-row + .meal-row {
+  border-top: 1px solid #e9eee9;
 }
 .meal-info {
-  flex: 1;
   min-width: 0;
 }
 .meal-info b {
   display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .meal-info span {
+  display: block;
+  margin-top: 2px;
   font-size: 13px;
   color: #718480;
 }
 .meal-cal {
   font-weight: 800;
+  white-space: nowrap;
 }
 .meal-actions {
   display: flex;
@@ -311,8 +348,16 @@ button:disabled {
   gap: 6px;
 }
 .meal-actions .secondary {
-  padding: 7px 10px;
+  padding: 8px 10px;
   font-size: 13px;
+}
+.meal-actions .icon-button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
 }
 .journal-section {
   margin-top: 28px;
@@ -873,15 +918,50 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) 90px 34px;
 }
 @media (max-width: 820px) {
-  .meal {
-    flex-wrap: wrap;
+  .meal-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 8px;
   }
   .meal-actions {
-    width: 100%;
-    justify-content: flex-end;
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 560px) {
+  .meal-group-head {
+    padding: 12px 14px;
+  }
+  .meal-group-name {
+    gap: 8px;
+  }
+  .meal-group-name h3 {
+    font-size: 15px;
+  }
+  .meal-count {
+    display: none;
+  }
+  .meal-group-cal {
+    font-size: 14px;
+  }
+  .meal-row {
+    padding: 12px 14px;
+  }
+  .meal-cal {
+    font-size: 14px;
+  }
+  .meal-actions {
+    gap: 5px;
+  }
+  .meal-actions .secondary {
+    padding: 8px 9px;
+  }
+  .meal-actions .icon-button {
+    width: 34px;
+    height: 34px;
+  }
+  .section-head > .primary {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
   .trends-head {
     flex-wrap: wrap;
   }

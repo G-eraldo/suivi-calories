@@ -1,4 +1,5 @@
 import { parseOpenFoodFactsProduct } from '../utils/open-food-facts.js'
+import { quantityKind } from '../utils/quantity-units.js'
 
 const barcodeCache = new Map()
 
@@ -88,7 +89,7 @@ async function api(request, env, url) {
         one(db, "SELECT goal_kcal FROM settings WHERE owner_id = ?", owner),
         all(
           db,
-          "SELECT id,name,brand,kcal,protein,carbs,fat,fiber FROM products WHERE owner_id = ? ORDER BY name LIMIT 500",
+          "SELECT id,name,brand,kcal,protein,carbs,fat,fiber,basis_unit FROM products WHERE owner_id = ? ORDER BY name LIMIT 500",
           owner,
         ),
         all(
@@ -98,7 +99,7 @@ async function api(request, env, url) {
         ),
         all(
           db,
-          "SELECT id,item_name,item_type,meal_type,quantity,kcal,protein,carbs,fat,fiber FROM meals WHERE owner_id = ? AND eaten_on = ? ORDER BY created_at DESC LIMIT 500",
+          "SELECT id,item_id,item_name,item_type,meal_type,quantity,basis_unit,kcal,protein,carbs,fat,fiber FROM meals WHERE owner_id = ? AND eaten_on = ? ORDER BY created_at DESC LIMIT 500",
           owner,
           day,
         ),
@@ -127,7 +128,7 @@ async function api(request, env, url) {
     }
     if (method === "GET" && parts[0] === "recent-meals") {
       const rows = await all(db,
-        "SELECT id,item_type,item_id,item_name,meal_type,quantity,kcal,protein,carbs,fat,fiber,eaten_on FROM meals WHERE owner_id = ? ORDER BY eaten_on DESC, created_at DESC LIMIT 150",
+        "SELECT id,item_type,item_id,item_name,meal_type,quantity,basis_unit,kcal,protein,carbs,fat,fiber,eaten_on FROM meals WHERE owner_id = ? ORDER BY eaten_on DESC, created_at DESC LIMIT 150",
         owner,
       );
       const suggestions = new Map();
@@ -173,28 +174,32 @@ async function api(request, env, url) {
       );
       const fiber = b?.fiber === undefined || b?.fiber === null || b?.fiber === ""
         ? null : numeric(b.fiber, 0, 100);
+      const basisUnit = quantityKind(name) === 'liquid' ? (b?.basisUnit || 'ml') : 'g';
       if (!name || values.some((x) => x === null))
         return fail("Complète le nom et les valeurs nutritionnelles.");
+      if (!['g', 'ml'].includes(basisUnit)) return fail("Choisis une unité nutritionnelle valide.");
       if (fiber === null && b?.fiber !== undefined && b?.fiber !== null && b?.fiber !== "")
         return fail("Vérifie la quantité de fibres pour 100 g ou 100 ml.");
       const id = crypto.randomUUID();
       await db
         .prepare(
-          "INSERT INTO products (id,owner_id,name,brand,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO products (id,owner_id,name,brand,kcal,protein,carbs,fat,fiber,basis_unit,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         )
-        .bind(id, owner, name, brand, ...values, fiber, new Date().toISOString())
+        .bind(id, owner, name, brand, ...values, fiber, basisUnit, new Date().toISOString())
         .run();
       return json({ id }, 201);
     }
     if (method === "PATCH" && parts[0] === "products" && parts[1]) {
       const b = await bodyOf(request);
       const fiber = b?.fiber === null || b?.fiber === "" ? null : numeric(b?.fiber, 0, 100);
-      if (fiber === null && b?.fiber !== null && b?.fiber !== "")
+      if (fiber === null && b?.fiber !== undefined && b?.fiber !== null && b?.fiber !== "")
         return fail("Vérifie la quantité de fibres pour 100 g ou 100 ml.");
-      const product = await one(db, "SELECT id FROM products WHERE id = ? AND owner_id = ?", parts[1], owner);
+      const product = await one(db, "SELECT id,name,fiber,basis_unit FROM products WHERE id = ? AND owner_id = ?", parts[1], owner);
       if (!product) return fail("Ce produit est introuvable.", 404);
-      await db.prepare("UPDATE products SET fiber = ? WHERE id = ? AND owner_id = ?")
-        .bind(fiber, parts[1], owner).run();
+      const basisUnit = quantityKind(product.name) === 'liquid' ? (b?.basisUnit || product.basis_unit) : 'g';
+      if (!['g', 'ml'].includes(basisUnit)) return fail("Choisis une unité nutritionnelle valide.");
+      await db.prepare("UPDATE products SET fiber = ?,basis_unit = ? WHERE id = ? AND owner_id = ?")
+        .bind(b?.fiber === undefined ? product.fiber : fiber, basisUnit, parts[1], owner).run();
       return json({ ok: true });
     }
     if (method === "POST" && parts[0] === "recipes") {
@@ -231,17 +236,17 @@ async function api(request, env, url) {
           return fail("Choisis un produit ou coche « Ne pas comptabiliser » pour chaque ingrédient.");
         const p = await one(
           db,
-          "SELECT id,name,kcal,protein,carbs,fat,fiber FROM products WHERE id = ? AND owner_id = ?",
+          "SELECT id,name,kcal,protein,carbs,fat,fiber,basis_unit FROM products WHERE id = ? AND owner_id = ?",
           line.productId,
           owner,
         );
         if (!p) return fail("Un produit de la recette est introuvable.");
-        // For liquids, the legacy `grams` value represents milliliters and
-        // product nutrition is entered per 100 ml; solids remain per 100 g.
+        // `grams` is the product's base quantity: grams for 100 g labels,
+        // milliliters for 100 ml labels. The client converts cl to ml.
         for (const key of Object.keys(totals))
           totals[key] += (p[key] * grams) / 100;
         fibers.push(p.fiber == null ? null : (p.fiber * grams) / 100);
-        saved.push({ productId: p.id, name: p.name, grams });
+        saved.push({ productId: p.id, name: p.name, grams, basisUnit: p.basis_unit });
       }
       if (saved.every((line) => line.excluded))
         return fail("Sélectionne au moins un produit comptabilisé pour la recette.");
@@ -281,17 +286,17 @@ async function api(request, env, url) {
       const table = b.itemType === "product" ? "products" : "recipes";
       const item = await one(
         db,
-        `SELECT id,name,kcal,protein,carbs,fat,fiber FROM ${table} WHERE id = ? AND owner_id = ?`,
+        `SELECT id,name,kcal,protein,carbs,fat,fiber${b.itemType === 'product' ? ',basis_unit' : ''} FROM ${table} WHERE id = ? AND owner_id = ?`,
         b.itemId,
         owner,
       );
       if (!item) return fail("Ce produit ou cette recette est introuvable.");
-      // Product quantities use grams for solids and milliliters for liquids.
+      // Product quantities use grams or milliliters according to the label base.
       const factor = b.itemType === "product" ? quantity / 100 : quantity;
       const id = crypto.randomUUID();
       await db
         .prepare(
-          "INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,basis_unit,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         )
         .bind(
           id,
@@ -302,6 +307,7 @@ async function api(request, env, url) {
           item.id,
           item.name,
           quantity,
+          b.itemType === 'product' ? item.basis_unit : null,
           ...["kcal", "protein", "carbs", "fat"].map(
             (k) => Math.round(item[k] * factor * 10) / 10,
           ),
@@ -315,7 +321,7 @@ async function api(request, env, url) {
       const duplicate = method === "POST" && parts[2] === "duplicate";
       if (!duplicate && (method !== "PATCH" || parts.length !== 2)) return fail("Action introuvable.", 404);
       const original = await one(db,
-        "SELECT id,item_type,item_id,item_name,meal_type,quantity,kcal,protein,carbs,fat,fiber FROM meals WHERE id = ? AND owner_id = ?",
+        "SELECT id,item_type,item_id,item_name,meal_type,quantity,basis_unit,kcal,protein,carbs,fat,fiber FROM meals WHERE id = ? AND owner_id = ?",
         parts[1], owner,
       );
       if (!original) return fail("Ce repas est introuvable.", 404);
@@ -325,8 +331,8 @@ async function api(request, env, url) {
         return fail("Vérifie la date, le moment et la quantité du repas.");
       if (duplicate) {
         const id = crypto.randomUUID();
-        await db.prepare("INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .bind(id, owner, b.date, b.mealType, original.item_type, original.item_id, original.item_name, original.quantity, original.kcal, original.protein, original.carbs, original.fat, original.fiber, new Date().toISOString()).run();
+        await db.prepare("INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,basis_unit,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .bind(id, owner, b.date, b.mealType, original.item_type, original.item_id, original.item_name, original.quantity, original.basis_unit ?? null, original.kcal, original.protein, original.carbs, original.fat, original.fiber, new Date().toISOString()).run();
         return json({ id }, 201);
       }
       const factor = quantity / original.quantity;

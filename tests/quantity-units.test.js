@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { quantityKind, quantityFromGrams, gramsFromQuantity, quantityText } from '../utils/quantity-units.js'
+import { quantityKind, productQuantityKind, quantityFromGrams, gramsFromQuantity, quantityText } from '../utils/quantity-units.js'
 
 test('convertit les liquides en cl pour la saisie et la lecture', () => {
   for (const name of ['Eau', 'Lait entier', "Huile d’olive", 'Jus de pomme']) assert.equal(quantityKind(name), 'liquid')
@@ -9,6 +9,8 @@ test('convertit les liquides en cl pour la saisie et la lecture', () => {
   assert.equal(gramsFromQuantity(50, 'liquid'), 500)
   assert.equal(quantityFromGrams(500, 'liquid'), 50)
   assert.equal(quantityText(250, 'Lait entier'), '25 cl')
+  assert.equal(productQuantityKind({ name: "Huile d'olive", basis_unit: 'g' }), 'solid')
+  assert.equal(quantityText(1, "Huile d'olive", 'g'), '1 g')
   assert.equal(quantityKind('Yaourt au lait'), 'solid')
 })
 

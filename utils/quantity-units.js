@@ -10,6 +10,11 @@ export function quantityKind(name) {
   return 'solid'
 }
 
+export function productQuantityKind(product) {
+  const kind = quantityKind(product?.name)
+  return kind === 'liquid' && product?.basis_unit === 'g' ? 'solid' : kind
+}
+
 export function quantityFromGrams(grams, kind) {
   const divisor = kind === 'egg' ? 50 : kind === 'liquid' ? 10 : 1
   return Math.round(Number(grams) / divisor * 100) / 100
@@ -20,8 +25,8 @@ export function gramsFromQuantity(quantity, kind) {
   return Number(quantity) * multiplier
 }
 
-export function quantityText(grams, name) {
-  const kind = quantityKind(name)
+export function quantityText(grams, name, basisUnit) {
+  const kind = productQuantityKind({ name, basis_unit: basisUnit })
   const amount = quantityFromGrams(grams, kind)
   if (kind === 'egg') return `${amount} ${amount > 1 ? 'œufs' : 'œuf'}`
   return `${amount} ${kind === 'liquid' ? 'cl' : 'g'}`
