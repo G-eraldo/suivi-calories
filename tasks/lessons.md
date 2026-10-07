@@ -12,3 +12,5 @@
 - Quand une quantité peut être mesurée dans plusieurs unités, placer le choix d’unité dans le formulaire où cette quantité est saisie.
 - Après un changement de dépendance, vérifier le build depuis `npm ci` avec la version de Node du déploiement ; un `node_modules` local peut masquer un lockfile incompatible.
 - Sur mobile, un `<select>` natif ne peut pas afficher une recherche dans son menu ; utiliser un sélecteur personnalisé lorsque la recherche doit être intégrée à la liste ouverte.
+- Sur iPhone, placer les menus de recherche dans la zone `visualViewport` et éviter d’ouvrir le clavier dès l’affichage du menu pour garder les choix visibles.
+- Pour un scan caméra, afficher le code reconnu et une validation explicite, avec une capture à la demande quand la détection continue échoue.

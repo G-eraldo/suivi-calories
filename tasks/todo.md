@@ -1,3 +1,16 @@
+# Sélecteur visible avec le clavier iPhone
+
+- [x] Repositionner le menu dans la zone visible du navigateur quand le clavier s’ouvre.
+- [x] Garder les résultats défilables sous la recherche et éviter l’ouverture automatique du clavier sur mobile.
+- [x] Vérifier le build complet et la compilation du composant.
+- [ ] Confirmer le rendu avec le clavier sur un iPhone après livraison.
+
+# Validation du scan de code-barres
+
+- [x] Afficher le code reconnu et demander une validation explicite avant la recherche.
+- [x] Ajouter une lecture à la demande et une photo de code-barres si la détection en direct échoue.
+- [x] Vérifier le build et les parcours de scan sans toucher aux modifications en cours.
+
 # Recherche dans les sélecteurs mobiles
 
 - [x] Créer un sélecteur avec recherche visible dans le menu ouvert.

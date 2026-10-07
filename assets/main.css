@@ -735,23 +735,28 @@ button:disabled {
   border-radius: 11px;
   object-fit: cover;
 }
-.barcode-input {
+.barcode-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
-.barcode-input input {
-  min-width: 0;
-  flex: 1;
+.barcode-photo {
+  display: inline-block;
+  margin-top: 12px;
+  cursor: pointer;
 }
-.barcode-input button {
-  white-space: nowrap;
+.visually-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
 }
 @media (max-width: 560px) {
-  .barcode-input {
-    flex-wrap: wrap;
-  }
-  .barcode-input button {
+  .barcode-actions button,
+  .barcode-photo {
     width: 100%;
+    text-align: center;
   }
 }
 .grid2 {
