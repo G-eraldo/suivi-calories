@@ -14,8 +14,10 @@ const isOpen = ref(false)
 const query = ref('')
 const activeIndex = ref(0)
 const trigger = ref(null)
+const panel = ref(null)
 const searchInput = ref(null)
 const closeButton = ref(null)
+const viewportStyle = ref({})
 const selected = computed(() => props.options.find(item => item.id === props.modelValue))
 const optionLabel = item => `${item.name}${item.brand ? ` · ${item.brand}` : ''}`
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim()
@@ -25,15 +27,37 @@ const filtered = computed(() => {
 })
 watch(query, () => { activeIndex.value = 0 })
 
+function updateViewport() {
+    const viewport = window.visualViewport
+    viewportStyle.value = viewport ? {
+        top: `${viewport.offsetTop}px`,
+        left: `${viewport.offsetLeft}px`,
+        width: `${viewport.width}px`,
+        height: `${viewport.height}px`
+    } : {}
+}
+function stopViewportTracking() {
+    window.visualViewport?.removeEventListener('resize', updateViewport)
+    window.visualViewport?.removeEventListener('scroll', updateViewport)
+    window.removeEventListener('resize', updateViewport)
+}
+onBeforeUnmount(stopViewportTracking)
+
 async function open() {
     if (props.disabled) return
     query.value = ''
     activeIndex.value = Math.max(0, props.options.findIndex(item => item.id === props.modelValue))
+    updateViewport()
+    window.visualViewport?.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('scroll', updateViewport)
+    window.addEventListener('resize', updateViewport)
     isOpen.value = true
     await nextTick()
-    searchInput.value?.focus()
+    if (window.matchMedia('(pointer: coarse)').matches) panel.value?.focus({ preventScroll: true })
+    else searchInput.value?.focus()
 }
 async function close() {
+    stopViewportTracking()
     isOpen.value = false
     await nextTick()
     trigger.value?.focus()
@@ -66,24 +90,30 @@ function onKeydown(event) {
     <button :id="id" ref="trigger" type="button" class="search-select-trigger" :disabled="disabled"
         :aria-label="`${label} : ${selected ? optionLabel(selected) : placeholder}`" :aria-required="required"
         aria-haspopup="dialog" :aria-expanded="isOpen" @click="open">
-        <span :class="{ 'search-select-placeholder': !selected }">{{ selected ? optionLabel(selected) : placeholder }}</span>
+        <span :class="{ 'search-select-placeholder': !selected }">{{ selected ? optionLabel(selected) : placeholder
+            }}</span>
         <span class="search-select-chevron" aria-hidden="true">⌄</span>
     </button>
     <Teleport to="body">
-        <div v-if="isOpen" class="search-select-backdrop" @click.self="close">
-            <section class="search-select-panel" role="dialog" aria-modal="true" :aria-labelledby="`${id}-title`" @keydown="onKeydown">
-                <div class="search-select-head"><h2 :id="`${id}-title`">{{ label }}</h2><button ref="closeButton" type="button" class="search-select-close" aria-label="Fermer la liste" @click="close">×</button></div>
+        <div v-if="isOpen" class="search-select-backdrop" :style="viewportStyle" @click.self="close">
+            <section ref="panel" class="search-select-panel" role="dialog" aria-modal="true" tabindex="-1"
+                :aria-labelledby="`${id}-title`" @keydown="onKeydown">
+                <div class="search-select-head">
+                    <h2 :id="`${id}-title`">{{ label }}</h2><button ref="closeButton" type="button"
+                        class="search-select-close" aria-label="Fermer la liste" @click="close">×</button>
+                </div>
                 <label class="search-select-search-label" :for="`${id}-search`">Rechercher</label>
                 <input :id="`${id}-search`" ref="searchInput" v-model="query" type="search" class="search-select-search"
-                    :placeholder="searchPlaceholder" autocomplete="off" role="combobox"
-                    aria-autocomplete="list" aria-expanded="true" :aria-controls="`${id}-options`"
+                    :placeholder="searchPlaceholder" autocomplete="off" role="combobox" aria-autocomplete="list"
+                    aria-expanded="true" :aria-controls="`${id}-options`"
                     :aria-activedescendant="filtered.length ? `${id}-option-${activeIndex}` : undefined">
                 <div :id="`${id}-options`" class="search-select-options" role="listbox" :aria-label="label">
-                    <button v-for="(item, index) in filtered" :id="`${id}-option-${index}`" :key="item.id"
-                        type="button" role="option" tabindex="-1" class="search-select-option"
+                    <button v-for="(item, index) in filtered" :id="`${id}-option-${index}`" :key="item.id" type="button"
+                        role="option" tabindex="-1" class="search-select-option"
                         :class="{ active: index === activeIndex, selected: item.id === modelValue }"
                         :aria-selected="item.id === modelValue" @mouseenter="activeIndex = index" @click="choose(item)">
-                        <span>{{ optionLabel(item) }}</span><span v-if="item.id === modelValue" aria-hidden="true">✓</span>
+                        <span>{{ optionLabel(item) }}</span><span v-if="item.id === modelValue"
+                            aria-hidden="true">✓</span>
                     </button>
                     <p v-if="!filtered.length" class="search-select-empty" role="status">Aucun résultat.</p>
                 </div>
