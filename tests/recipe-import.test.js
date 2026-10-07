@@ -20,7 +20,7 @@ Préparation :
   assert.equal(recipe.name, 'Gaufres Banana Bread Style')
   assert.equal(recipe.portions, 5)
   assert.equal(recipe.ingredients.length, 6)
-  assert.deepEqual(recipe.ingredients.map(line => line.grams), [50, 50, 30, 120, 40, 15])
+  assert.deepEqual(recipe.ingredients.map(line => line.grams), [50, 50, 30, 118, 40, 15])
   assert.match(recipe.instructions, /Préchauffe ton gaufrier/)
   assert.equal(recipe.ingredients[0].estimated, true)
 })
@@ -51,4 +51,17 @@ test('la fraction de sachet et les sprays restent à peser', () => {
 • ⅔ sachet de levure boulangère`)
   assert.equal(recipe.ingredients.length, 2)
   assert.deepEqual(recipe.ingredients.map(line => line.grams), [null, null])
+})
+
+test('estime les œufs, bananes et pommes en partie comestible', () => {
+  const recipe = parseRecipe('Ingrédients\n• 2 œufs\n• 1 banane\n• 1 pomme')
+  assert.deepEqual(recipe.ingredients.map(line => line.grams), [100, 118, 182])
+})
+
+test('ne confond pas une pomme avec une pomme de terre', () => {
+  const apple = { id: 'apple', name: 'Pomme (crue, avec peau, sans trognon)' }
+  const potato = { id: 'potato', name: 'Pomme de terre (crue, avec peau)' }
+  assert.equal(matchProduct('pomme', [potato, apple])?.id, 'apple')
+  assert.equal(matchProduct('pommes de terre', [potato, apple])?.id, 'potato')
+  assert.equal(matchProduct('pomme', [potato]), null)
 })

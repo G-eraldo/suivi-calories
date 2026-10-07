@@ -1,3 +1,8 @@
+# Catalogue des aliments préremplis
+
+- [x] Afficher les références nutritionnelles existantes dans l’onglet Produits.
+- [x] Permettre leur ajout à Mes produits et vérifier le build.
+
 # Import de recettes
 
 - [x] Lire une recette collée ou issue d'une capture, extraire titre, portions, ingrédients et préparation.
@@ -14,6 +19,12 @@
 
 - [x] Préremplir la levure boulangère déshydratée avec une référence nutritionnelle vérifiée.
 - [x] Vérifier le calcul pour 5 g et l’enregistrement depuis une recette.
+
+# Œuf, banane et pomme
+
+- [x] Ajouter les valeurs de référence pour 100 g et le poids comestible moyen d’une pièce.
+- [x] Permettre l’ajout au journal par pièce et le préremplissage dans les recettes.
+- [x] Vérifier le calcul, l’import des recettes et le build.
 
 # Déploiement Dokploy
 

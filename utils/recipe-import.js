@@ -1,10 +1,12 @@
 import { isDryYeastLabel } from './dry-yeast.js'
+import { commonFoodForIngredient } from './common-foods.js'
 
 const normalize = value => String(value || '').replace(/œ/gi, 'oe').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 const stop = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'un', 'une', 'et', 'au', 'aux', 'ton', 'ta', 'choix', 'petit', 'style'])
 const aliases = [
   [/\bfarines?\b/, 'farine'], [/\boeufs?\b|\bœufs?\b/, 'oeuf'],
   [/\bbananes?\b/, 'banane'], [/\blaits?\b/, 'lait'],
+  [/\bpommes?\b/, 'pomme'],
   [/\bpepites?\b/, 'pepite'], [/\bchocolats?\b/, 'chocolat'],
   [/\bwheys?\b/, 'whey'], [/\bskyrs?\b/, 'skyr']
 ]
@@ -40,8 +42,10 @@ function ingredientLine(line) {
   else if (unit === 'ml') grams = quantity
   else if (unit === 'cl') grams = quantity * 10
   else if (unit === 'l' || unit.startsWith('litre')) grams = quantity * 1000
-  else if (/^oeufs?$/.test(normalize(label))) grams = quantity * 50
-  else if (/^bananes?$/.test(normalize(label))) grams = quantity * 120
+  else {
+    const food = commonFoodForIngredient(label)
+    if (food) grams = quantity * food.grams
+  }
   return { label, grams: grams ? Math.round(grams * 10) / 10 : null, original: clean, estimated: !unit || ['ml', 'cl', 'l'].includes(unit) || unit.startsWith('litre'), unit }
 }
 export function parseRecipe(text) {
@@ -74,9 +78,11 @@ export function parseRecipe(text) {
 export function matchProduct(label, products) {
   const wanted = tokens(label)
   if (!wanted.length) return null
+  const wantedPotato = /\bpommes? de terre\b/.test(normalize(label))
   let best = null, bestScore = 0, tied = false
   for (const product of products) {
     if (isDryYeastLabel(label) && !isDryYeastLabel(product.name)) continue
+    if (wanted.includes('pomme') && wantedPotato !== /\bpommes? de terre\b/.test(normalize(product.name))) continue
     const candidate = tokens(`${product.name} ${product.brand || ''}`)
     const overlap = wanted.filter(token => candidate.includes(token)).length
     const score = overlap / wanted.length

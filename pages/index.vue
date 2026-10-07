@@ -2,8 +2,9 @@
 import { parseNutritionLabel } from '~/utils/nutrition-scan.js'
 import { matchProduct, parseRecipe } from '~/utils/recipe-import.js'
 import { vegetables } from '~/utils/vegetables.js'
-import { adelieCone, gramsForCones, conesForGrams } from '~/utils/ice-cream.js'
+import { adelieCone, conesForGrams } from '~/utils/ice-cream.js'
 import { dryYeast, isDryYeastLabel } from '~/utils/dry-yeast.js'
+import { commonFoods, commonFoodForIngredient, unitsForGrams } from '~/utils/common-foods.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -14,9 +15,13 @@ const busy = ref(false)
 const error = ref('')
 const notice = ref('')
 const state = ref({ goal: 2000, products: [], recipes: [], meals: [] })
+const referenceProducts = [...vegetables, ...commonFoods, dryYeast, adelieCone]
+const savedReferenceProduct = reference => state.value.products.some(item => item.name === reference.name && (item.brand || '') === (reference.brand || ''))
 const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
 const selectedVegetable = ref('')
 const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
+const selectedCommonFoodPreset = ref('')
+const commonFoodPreset = computed(() => commonFoods.find(item => item.id === selectedCommonFoodPreset.value))
 const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] })
 const importText = ref('')
 const importBusy = ref(false)
@@ -24,6 +29,9 @@ const importInfo = ref('')
 const productForIngredient = ref(-1)
 const meal = reactive({ itemType: 'product', itemId: '', mealType: 'Déjeuner', quantity: 100 })
 const coneCount = ref(1)
+const selectedCommonMeal = ref('egg')
+const commonMealCount = ref(1)
+const commonMealFood = computed(() => commonFoods.find(item => item.id === selectedCommonMeal.value))
 const goal = ref(2000)
 const scanBusy = ref(false)
 const scanInfo = ref('')
@@ -65,18 +73,29 @@ const round = n => Math.round(Number(n) || 0)
 const mealIcon = t => ({ 'Petit-déjeuner': '☀️', 'Déjeuner': '🥗', 'Dîner': '🌙', 'Collation': '🍎' })[t] || '🍽️'
 function mealQuantityLabel(entry) {
     if (entry.item_type === 'recipe') return `${entry.quantity} portion${entry.quantity > 1 ? 's' : ''}`
-    const count = entry.item_name === adelieCone.name ? conesForGrams(entry.quantity) : null
-    return count ? `${count} cône${count > 1 ? 's' : ''} (${entry.quantity} g)` : `${round(entry.quantity)} g`
+    const cones = entry.item_name === adelieCone.name ? conesForGrams(entry.quantity) : null
+    if (cones) return `${cones} cône${cones > 1 ? 's' : ''} (${entry.quantity} g)`
+    const food = commonFoods.find(item => item.name === entry.item_name)
+    const units = food ? unitsForGrams(food, entry.quantity) : null
+    return units ? `${units} ${units > 1 ? food.plural : food.singular} (${entry.quantity} g)` : `${round(entry.quantity)} g`
 }
-function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1 } }
-function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = '' }
+function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
+function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = ''; selectedCommonFoodPreset.value = '' }
 function applyVegetablePreset() {
     const vegetable = vegetables.find(item => item.name === selectedVegetable.value)
     if (!vegetable) return
+    selectedCommonFoodPreset.value = ''
     Object.assign(product, { name: vegetable.name, brand: '', kcal: vegetable.kcal, protein: vegetable.protein, carbs: vegetable.carbs, fat: vegetable.fat })
+}
+function applyCommonFoodPreset() {
+    const food = commonFoodPreset.value
+    if (!food) return
+    selectedVegetable.value = ''
+    Object.assign(product, { name: food.name, brand: food.brand, kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat })
 }
 function applyDryYeastPreset() {
     selectedVegetable.value = ''
+    selectedCommonFoodPreset.value = ''
     Object.assign(product, dryYeast)
 }
 async function send(path, body, method = 'POST') { error.value = ''; try { busy.value = true; await api(path, { method, body: JSON.stringify(body) }); await load(); close(); notice.value = 'Enregistré.'; setTimeout(() => notice.value = '', 3000) } catch (e) { error.value = e.message } finally { busy.value = false } }
@@ -93,28 +112,47 @@ async function saveProduct() {
         } else close()
         Object.assign(product, { name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
         selectedVegetable.value = ''
+        selectedCommonFoodPreset.value = ''
         notice.value = 'Produit enregistré.'
     } catch (e) { error.value = e.message } finally { busy.value = false }
 }
+async function addReferenceProduct(reference) {
+    if (busy.value || savedReferenceProduct(reference)) return
+    error.value = ''
+    try {
+        busy.value = true
+        const { name, brand = '', kcal, protein, carbs, fat } = reference
+        await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat }) })
+        await load()
+        notice.value = `${name} ajouté à mes produits.`
+    } catch (e) { error.value = e.message }
+    finally { busy.value = false }
+}
 async function saveRecipe() { await send('recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), label: x.label, excluded: x.excluded === true })) }); if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' } }
 async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
-async function saveConeMeal() {
-    const count = Number(coneCount.value)
-    if (!Number.isInteger(count) || count < 1 || count > 99) { error.value = 'Indique un nombre de cônes entre 1 et 99.'; return }
+async function saveReferenceMeal(reference, enteredCount, singular, plural) {
+    const count = Number(enteredCount)
+    if (!Number.isInteger(count) || count < 1 || count > 99) { error.value = 'Indique un nombre entier entre 1 et 99.'; return }
     error.value = ''
     busy.value = true
     try {
-        let savedProduct = state.value.products.find(item => item.name === adelieCone.name && item.brand === adelieCone.brand)
+        let savedProduct = state.value.products.find(item => item.name === reference.name && item.brand === reference.brand)
         if (!savedProduct) {
-            const { id } = await api('products', { method: 'POST', body: JSON.stringify(adelieCone) })
+            const { name, brand, kcal, protein, carbs, fat } = reference
+            const { id } = await api('products', { method: 'POST', body: JSON.stringify({ name, brand, kcal, protein, carbs, fat }) })
             savedProduct = { id }
         }
-        await api('meals', { method: 'POST', body: JSON.stringify({ date: date.value, mealType: meal.mealType, itemType: 'product', itemId: savedProduct.id, quantity: gramsForCones(count) }) })
+        await api('meals', { method: 'POST', body: JSON.stringify({ date: date.value, mealType: meal.mealType, itemType: 'product', itemId: savedProduct.id, quantity: reference.grams * count }) })
         await load()
         close()
-        notice.value = `${count} cône${count > 1 ? 's' : ''} ajouté${count > 1 ? 's' : ''} au journal.`
+        notice.value = `Ajouté au journal : ${count} ${count > 1 ? plural : singular}.`
     } catch (e) { error.value = e.message; await load() }
     finally { busy.value = false }
+}
+async function saveConeMeal() { await saveReferenceMeal(adelieCone, coneCount.value, 'cône', 'cônes') }
+async function saveCommonFoodMeal() {
+    const food = commonMealFood.value
+    if (food) await saveReferenceMeal(food, commonMealCount.value, food.singular, food.plural)
 }
 async function saveGoal() { await send('goal', { goal: Number(goal.value) }) }
 async function removeItem(type, id) { if (!confirm('Supprimer cet élément ?')) return; await send(type + '/' + encodeURIComponent(id), {}, 'DELETE') }
@@ -122,8 +160,11 @@ function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, 
 function createIngredientProduct(index) {
     productForIngredient.value = index
     selectedVegetable.value = ''
+    selectedCommonFoodPreset.value = ''
     Object.assign(product, { name: recipe.ingredients[index].label || '', brand: '', kcal: '', protein: '', carbs: '', fat: '' })
-    if (isDryYeastLabel(recipe.ingredients[index].label)) applyDryYeastPreset()
+    const food = commonFoodForIngredient(recipe.ingredients[index].label)
+    if (food) { selectedCommonFoodPreset.value = food.id; applyCommonFoodPreset() }
+    else if (isDryYeastLabel(recipe.ingredients[index].label)) applyDryYeastPreset()
     error.value = ''
     modal.value = 'product'
 }
@@ -241,6 +282,7 @@ async function scanPhoto(event) {
             <template v-else-if="tab === 'products'">
                 <h1 class="heading">Mes produits</h1>
                 <p class="sub">Enregistre un produit une fois, puis retrouve-le à chaque repas.</p>
+                <div v-if="error" class="error" role="alert">{{ error }}</div>
                 <div class="toolbar"><span class="eyebrow">{{ state.products.length }} produit{{
                     state.products.length>1?'s':'' }}</span><button class="primary" @click="open('product')">Ajouter
                         un produit</button></div>
@@ -259,6 +301,20 @@ async function scanPhoto(event) {
                                 @click="removeItem('products', p.id)">×</button></div>
                     </article>
                 </div>
+                <section class="reference-section" aria-labelledby="reference-products-title">
+                    <h2 id="reference-products-title">Aliments préremplis</h2>
+                    <p class="sub">Valeurs pour 100 g. Ajoute ceux que tu utilises à Mes produits pour les retrouver dans tes repas et recettes. L’eau peut rester un ingrédient sans calories dans une recette.</p>
+                    <div class="library">
+                        <article v-for="reference in referenceProducts" :key="reference.name" class="item-card">
+                            <h3>{{ reference.name }}</h3>
+                            <p>{{ reference.brand || 'Aliment courant' }} · pour 100 g</p>
+                            <div class="nutrition"><span><b>{{ reference.kcal }}</b> kcal</span><span>P {{ reference.protein }} g</span><span>G {{ reference.carbs }} g</span><span>L {{ reference.fat }} g</span></div>
+                            <p v-if="reference.grams" class="reference-serving">1 {{ reference.singular || 'cône' }} ≈ {{ reference.grams }} g · {{ round(reference.kcal * reference.grams / 100) }} kcal</p>
+                            <p v-else-if="reference.name === dryYeast.name" class="reference-serving">5 g ≈ {{ round(reference.kcal * 5 / 100) }} kcal</p>
+                            <div class="item-actions"><button class="secondary" :disabled="busy || savedReferenceProduct(reference)" @click="addReferenceProduct(reference)">{{ savedReferenceProduct(reference) ? 'Déjà dans Mes produits' : 'Ajouter à Mes produits' }}</button></div>
+                        </article>
+                    </div>
+                </section>
             </template>
             <template v-else>
                 <h1 class="heading">Mes recettes</h1>
@@ -316,6 +372,11 @@ async function scanPhoto(event) {
                             <option value="">Choisir un légume</option>
                             <option v-for="vegetable in vegetables" :key="vegetable.fdcId" :value="vegetable.name">{{ vegetable.name }}</option>
                         </select><p class="helper">Valeurs moyennes pour 100 g de légume cru. Les glucides USDA incluent les fibres. Vérifie le poids et adapte les chiffres si besoin. Source : <a :href="selectedVegetableSource ? `https://fdc.nal.usda.gov/food-details/${selectedVegetableSource}/nutrients` : 'https://fdc.nal.usda.gov/'" target="_blank" rel="noopener noreferrer">USDA FoodData Central</a>.</p></div>
+                    <div class="field"><label for="p-common-food">Œuf ou fruit courant (facultatif)</label><select id="p-common-food"
+                            v-model="selectedCommonFoodPreset" @change="applyCommonFoodPreset">
+                            <option value="">Choisir un aliment</option>
+                            <option v-for="food in commonFoods" :key="food.id" :value="food.id">{{ food.name }}</option>
+                        </select><p v-if="commonFoodPreset" class="helper">Valeurs pour 100 g d’aliment cru, partie comestible. 1 {{ commonFoodPreset.singular }} ≈ {{ commonFoodPreset.grams }} g et {{ round(commonFoodPreset.kcal * commonFoodPreset.grams / 100) }} kcal. Poids moyen à ajuster si besoin. <a :href="`https://fdc.nal.usda.gov/food-details/${commonFoodPreset.fdcId}/nutrients`" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p></div>
                     <div class="upload"><b>Levure boulangère déshydratée</b>
                         <p class="helper">Valeur de référence : 325 kcal/100 g, soit environ 16 kcal pour 5 g. Les glucides USDA incluent les fibres. <a href="https://fdc.nal.usda.gov/food-details/175043/nutrients" target="_blank" rel="noopener noreferrer">Source USDA</a>.</p>
                         <button type="button" class="secondary" @click="applyDryYeastPreset">Remplir avec ces valeurs</button>
@@ -390,6 +451,15 @@ async function scanPhoto(event) {
                         <div class="field"><label for="m-cones">Nombre de cônes</label><input id="m-cones" v-model="coneCount"
                                 type="number" min="1" max="99" step="1"></div>
                         <button type="button" class="secondary" :disabled="busy" @click="saveConeMeal">Ajouter ces cônes au journal</button>
+                    </div>
+                    <div class="upload"><b>Ajouter un œuf ou un fruit</b>
+                        <div class="field"><label for="m-common-food">Aliment</label><select id="m-common-food" v-model="selectedCommonMeal">
+                                <option v-for="food in commonFoods" :key="food.id" :value="food.id">{{ food.name }}</option>
+                            </select></div>
+                        <p v-if="commonMealFood" class="helper">1 {{ commonMealFood.singular }} ≈ {{ commonMealFood.grams }} g de partie comestible, soit {{ round(commonMealFood.kcal * commonMealFood.grams / 100) }} kcal. Pour un autre poids, utilise le champ en grammes ci-dessous.</p>
+                        <div class="field"><label for="m-common-count">Nombre de pièces</label><input id="m-common-count"
+                                v-model="commonMealCount" type="number" min="1" max="99" step="1"></div>
+                        <button type="button" class="secondary" :disabled="busy" @click="saveCommonFoodMeal">Ajouter au journal</button>
                     </div>
                     <div class="field"><label for="m-itemtype">Ajouter</label><select id="m-itemtype"
                             v-model="meal.itemType"

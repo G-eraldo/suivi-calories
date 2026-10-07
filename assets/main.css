@@ -349,6 +349,17 @@ button:disabled {
 .item-actions button {
   flex: 1;
 }
+.reference-section {
+  margin-top: 38px;
+}
+.reference-section h2 {
+  margin-bottom: 8px;
+  font: 800 22px Manrope;
+}
+.item-card .reference-serving {
+  margin: 14px 0 0;
+  color: #617a73;
+}
 .modal-backdrop {
   position: fixed;
   inset: 0;
