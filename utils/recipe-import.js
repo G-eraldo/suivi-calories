@@ -1,5 +1,6 @@
 import { isDryYeastLabel } from './dry-yeast.js'
 import { commonFoodForIngredient } from './common-foods.js'
+import { starchKind, starchState } from './starches.js'
 
 const normalize = value => String(value || '').replace(/œ/gi, 'oe').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
 const stop = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'un', 'une', 'et', 'au', 'aux', 'ton', 'ta', 'choix', 'petit', 'style'])
@@ -81,6 +82,13 @@ export function matchProduct(label, products) {
   const wantedPotato = /\bpommes? de terre\b/.test(normalize(label))
   let best = null, bestScore = 0, tied = false
   for (const product of products) {
+    if (starchKind(label) && starchKind(label) === starchKind(product.name)) {
+      const wantedState = starchState(label)
+      const productState = starchState(product.name)
+      if (wantedState === 'raw' && productState === 'cooked') continue
+      if (wantedState === 'cooked' && productState !== 'cooked') continue
+      if (wantedState === 'unknown' && productState === 'cooked') continue
+    }
     if (isDryYeastLabel(label) && !isDryYeastLabel(product.name)) continue
     if (wanted.includes('pomme') && wantedPotato !== /\bpommes? de terre\b/.test(normalize(product.name))) continue
     const candidate = tokens(`${product.name} ${product.brand || ''}`)

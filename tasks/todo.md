@@ -1,3 +1,22 @@
+# Recherche par code-barres
+
+- [x] Lire un code avec la caméra ou par saisie manuelle.
+- [x] Interroger Open Food Facts côté serveur et préremplir les valeurs nutritionnelles sans inventer les champs absents.
+- [x] Vérifier une installation propre, les tests, le build et les dépendances de production.
+
+# Journal plus rapide et tendances
+
+- [x] Corriger, déplacer et dupliquer un repas avec validation côté serveur.
+- [x] Afficher les repas récents/fréquents et enregistrer des favoris utilisables en un geste.
+- [x] Ajouter des bilans 7 et 30 jours avec moyennes et couverture des données.
+- [x] Vérifier les parcours concernés, les tests et le build.
+
+# Féculents pesés crus
+
+- [x] Clarifier la saisie des pâtes et du riz crus dans les produits et recettes.
+- [x] Afficher la quantité crue par portion et sécuriser l'association lors de l'import.
+- [x] Vérifier les cas concernés et la compilation.
+
 # Correction du build Dokploy
 
 - [x] Retirer l’override incompatible de simple-git et synchroniser le lockfile.

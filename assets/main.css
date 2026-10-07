@@ -305,6 +305,129 @@ button:disabled {
 .meal-cal {
   font-weight: 800;
 }
+.meal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.meal-actions .secondary {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.journal-section {
+  margin-top: 28px;
+}
+.segment {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #eaf1e9;
+}
+.segment button {
+  border: 0;
+  background: transparent;
+  border-radius: 9px;
+  padding: 7px 12px;
+  color: #426760;
+  font-weight: 700;
+}
+.segment button.active {
+  background: white;
+  color: #163638;
+  box-shadow: 0 2px 6px #143e2917;
+}
+.quick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 9px;
+  margin-top: 12px;
+}
+.quick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2ebe4;
+  border-radius: 13px;
+  background: white;
+}
+.quick-item > div {
+  flex: 1;
+  min-width: 0;
+}
+.quick-item b, .quick-item span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-item span {
+  color: #718480;
+  font-size: 13px;
+}
+.quick-item .secondary {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.trends-head {
+  margin-top: 0;
+}
+.trend-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 20px 0;
+}
+.trend-stats > div {
+  background: #f0f5ef;
+  border-radius: 12px;
+  padding: 13px;
+}
+.trend-stats b, .trend-stats span {
+  display: block;
+}
+.trend-stats b {
+  font: 800 22px Manrope;
+}
+.trend-stats span {
+  font-size: 12px;
+  color: #69817c;
+}
+.trend-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px;
+  height: 150px;
+  border-bottom: 1px solid #d8e4dc;
+}
+.trend-chart.monthly {
+  grid-template-columns: repeat(30, minmax(0, 1fr));
+  gap: 3px;
+}
+.trend-day {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  justify-content: end;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.trend-bar {
+  width: 100%;
+  max-width: 54px;
+  background: #a9d55e;
+  border-radius: 6px 6px 0 0;
+}
+.trend-bar.missing {
+  background: #dce6de;
+}
+.trend-day span {
+  font-size: 12px;
+  color: #718480;
+}
 .icon-button {
   border: 0;
   background: transparent;
@@ -429,6 +552,47 @@ button:disabled {
 .field select:focus {
   outline: 2px solid #9acb67;
   outline-offset: 1px;
+}
+.barcode-box {
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid #d7e7d5;
+  border-radius: 15px;
+  background: #f6faf3;
+}
+.barcode-box > b {
+  font: 800 17px Manrope;
+}
+.barcode-box .helper {
+  margin: 6px 0 10px;
+}
+.barcode-video {
+  display: block;
+  width: 100%;
+  max-height: 230px;
+  margin-top: 12px;
+  background: #153634;
+  border-radius: 11px;
+  object-fit: cover;
+}
+.barcode-input {
+  display: flex;
+  gap: 8px;
+}
+.barcode-input input {
+  min-width: 0;
+  flex: 1;
+}
+.barcode-input button {
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .barcode-input {
+    flex-wrap: wrap;
+  }
+  .barcode-input button {
+    width: 100%;
+  }
 }
 .grid2 {
   display: grid;
@@ -708,7 +872,22 @@ button:disabled {
 .ingredient-row {
   grid-template-columns: minmax(0, 1fr) 90px 34px;
 }
+@media (max-width: 820px) {
+  .meal {
+    flex-wrap: wrap;
+  }
+  .meal-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 @media (max-width: 560px) {
+  .trends-head {
+    flex-wrap: wrap;
+  }
+  .trend-stats b {
+    font-size: 17px;
+  }
   .import-actions > * {
     flex: 1;
     text-align: center;

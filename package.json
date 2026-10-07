@@ -12,6 +12,8 @@
     "start": "node server/node.js"
   },
   "dependencies": {
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
     "pg": "8.23.1"
   },
   "devDependencies": {

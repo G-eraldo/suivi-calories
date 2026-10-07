@@ -6,6 +6,7 @@ import { adelieCone, conesForGrams } from '~/utils/ice-cream.js'
 import { dryYeast, isDryYeastLabel } from '~/utils/dry-yeast.js'
 import { commonFoods, commonFoodForIngredient, unitsForGrams } from '~/utils/common-foods.js'
 import { quantityKind, quantityFromGrams, gramsFromQuantity, quantityText } from '~/utils/quantity-units.js'
+import { starchKind, starchState } from '~/utils/starches.js'
 definePageMeta({ layout: false })
 useSeoMeta({ title: 'Mon suivi calories', description: 'Journal personnel de repas, recettes et produits nutritionnels.' })
 const today = () => new Date().toLocaleDateString('en-CA')
@@ -19,18 +20,32 @@ const state = ref({ goal: 2000, products: [], recipes: [], meals: [] })
 const referenceProducts = [...vegetables, ...commonFoods, dryYeast, adelieCone]
 const savedReferenceProduct = reference => state.value.products.some(item => item.name === reference.name && (item.brand || '') === (reference.brand || ''))
 const product = reactive({ name: '', brand: '', kcal: '', protein: '', carbs: '', fat: '', fiber: '' })
+const barcodeCode = ref('')
+const barcodeBusy = ref(false)
+const barcodeScanning = ref(false)
+const barcodeInfo = ref('')
+const barcodeSource = ref('')
+const barcodeVideo = ref(null)
+let barcodeControls
 const fiberEdits = reactive({})
 const selectedVegetable = ref('')
 const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
 const selectedCommonFoodPreset = ref('')
 const commonFoodPreset = computed(() => commonFoods.find(item => item.id === selectedCommonFoodPreset.value))
 const productBasisUnit = computed(() => quantityKind(product.name) === 'liquid' ? 'ml' : 'g')
+const productStarchState = computed(() => starchState(product.name))
 const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] })
 const importText = ref('')
 const importBusy = ref(false)
 const importInfo = ref('')
 const productForIngredient = ref(-1)
 const meal = reactive({ itemType: 'product', itemId: '', mealType: 'Déjeuner', quantity: 100 })
+const editMeal = reactive({ id: '', date: '', mealType: 'Déjeuner', itemType: 'product', itemName: '', quantity: 100 })
+const suggestions = ref({ recent: [], frequent: [] })
+const suggestionTab = ref('recent')
+const favorites = ref([])
+const trendDays = ref(7)
+const trends = ref({ rows: [] })
 const coneCount = ref(1)
 const selectedCommonMeal = ref('egg')
 const commonMealCount = ref(1)
@@ -39,9 +54,20 @@ const goal = ref(2000)
 const scanBusy = ref(false)
 const scanInfo = ref('')
 const api = async (path, options = {}) => { const res = await fetch('/api/' + path, { headers: { 'Content-Type': 'application/json' }, ...options }); const data = await res.json(); if (!res.ok) throw new Error(data.error || 'Une erreur est survenue.'); return data }
-async function load() { try { busy.value = true; state.value = await api('state?date=' + encodeURIComponent(date.value)); goal.value = state.value.goal } catch (e) { error.value = e.message } finally { busy.value = false } }
+async function loadExtras() {
+    try {
+        const [nextSuggestions, nextTrends] = await Promise.all([
+            api('recent-meals'),
+            api(`trends?end=${encodeURIComponent(date.value)}&days=${trendDays.value}`)
+        ])
+        suggestions.value = nextSuggestions
+        trends.value = nextTrends
+    } catch (e) { error.value = e.message }
+}
+async function load() { try { busy.value = true; state.value = await api('state?date=' + encodeURIComponent(date.value)); goal.value = state.value.goal; await loadExtras() } catch (e) { error.value = e.message } finally { busy.value = false } }
 let webMcpLifecycle
 onMounted(async () => {
+    try { favorites.value = JSON.parse(localStorage.getItem('miametrie-favorites') || '[]').filter(item => item && item.id) } catch { favorites.value = [] }
     await load()
     const context = document.modelContext
     if (!context?.registerTool) return
@@ -66,11 +92,38 @@ onMounted(async () => {
         async execute(input) { if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.date || '') || !Number.isFinite(input?.quantity) || input.quantity <= 0) throw new Error('Repas invalide.'); const result = await api('meals', { method: 'POST', body: JSON.stringify(input) }); date.value = input.date; await load(); return { id: result.id, date: input.date } }
     })
 })
-onBeforeUnmount(() => webMcpLifecycle?.abort())
+onBeforeUnmount(() => { webMcpLifecycle?.abort(); stopBarcodeScan() })
 watch(date, load)
+watch(trendDays, loadExtras)
 const totals = computed(() => state.value.meals.reduce((a, m) => { a.kcal += m.kcal; a.protein += m.protein; a.carbs += m.carbs; a.fat += m.fat; if (m.fiber == null) a.fiberIncomplete = true; else { a.fiber += m.fiber; a.fiberKnown = true } return a }, { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, fiberKnown: false, fiberIncomplete: false }))
 const pct = computed(() => Math.min(100, Math.round(totals.value.kcal / Math.max(1, state.value.goal) * 100)))
 const remaining = computed(() => Math.max(0, Math.round(state.value.goal - totals.value.kcal)))
+const visibleSuggestions = computed(() => suggestionTab.value === 'favorites' ? favorites.value : suggestions.value[suggestionTab.value] || [])
+const trendRows = computed(() => {
+    const byDate = new Map(trends.value.rows.map(row => [row.eaten_on, row]))
+    const end = new Date(`${date.value}T12:00:00Z`)
+    return Array.from({ length: trendDays.value }, (_, index) => {
+        const day = new Date(end)
+        day.setUTCDate(day.getUTCDate() - trendDays.value + index + 1)
+        const key = day.toISOString().slice(0, 10)
+        return { date: key, kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: null, meals: 0, ...byDate.get(key) }
+    })
+})
+const loggedDays = computed(() => trendRows.value.filter(row => Number(row.meals) > 0))
+const knownFiberDays = computed(() => trendRows.value.filter(row => Number(row.fiber_known) > 0))
+const trendAverage = key => loggedDays.value.length ? round(loggedDays.value.reduce((sum, row) => sum + Number(row[key] || 0), 0) / loggedDays.value.length) : 0
+const trendMax = computed(() => Math.max(state.value.goal, ...trendRows.value.map(row => Number(row.kcal) || 0), 1))
+const rawStarchPortions = computed(() => {
+    const portions = Number(recipe.portions)
+    if (!Number.isInteger(portions) || portions < 1) return []
+    return recipe.ingredients.flatMap(line => {
+        const product = state.value.products.find(item => item.id === line.productId)
+        const grams = Number(line.grams)
+        return !line.excluded && starchState(product?.name) === 'raw' && Number.isFinite(grams) && grams > 0
+            ? [{ name: product.name, total: grams, each: Math.round(grams / portions * 10) / 10 }]
+            : []
+    })
+})
 const items = computed(() => meal.itemType === 'recipe' ? state.value.recipes : state.value.products)
 const mealProduct = computed(() => state.value.products.find(item => item.id === meal.itemId))
 const mealQuantityKind = computed(() => quantityKind(mealProduct.value?.name))
@@ -90,11 +143,54 @@ function ingredientKind(line) {
     return quantityKind(line.excluded ? line.label : productName || line.label)
 }
 function ingredientName(line) { return state.value.products.find(item => item.id === line.productId)?.name || line.label }
+function ingredientStarchState(line) { return starchState(state.value.products.find(item => item.id === line.productId)?.name) }
 function setIngredientQuantity(line, value) { line.grams = value === '' ? '' : gramsFromQuantity(value, ingredientKind(line)) }
 function selectMealProduct() { meal.quantity = mealQuantityKind.value === 'egg' ? 50 : 100 }
 function setMealQuantity(value) { meal.quantity = value === '' ? '' : gramsFromQuantity(value, mealQuantityKind.value) }
+function setEditQuantity(value) { editMeal.quantity = value === '' ? '' : editMeal.itemType === 'recipe' ? value : gramsFromQuantity(value, quantityKind(editMeal.itemName)) }
+function openEdit(entry) { error.value = ''; Object.assign(editMeal, { id: entry.id, date: date.value, mealType: entry.meal_type, itemType: entry.item_type, itemName: entry.item_name, quantity: entry.quantity }); modal.value = 'editMeal' }
+function isFavorite(entry) { return favorites.value.some(item => item.id === entry.id) }
+function toggleFavorite(entry) {
+    favorites.value = isFavorite(entry) ? favorites.value.filter(item => item.id !== entry.id) : [entry, ...favorites.value]
+    localStorage.setItem('miametrie-favorites', JSON.stringify(favorites.value))
+}
 function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
-function close() { modal.value = ''; error.value = ''; scanInfo.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = ''; selectedCommonFoodPreset.value = '' }
+function stopBarcodeScan() { barcodeControls?.stop(); barcodeControls = undefined; barcodeScanning.value = false }
+async function lookupBarcode() {
+    error.value = ''; barcodeInfo.value = ''; barcodeSource.value = ''
+    if (!/^\d{8,14}$/.test(barcodeCode.value.trim())) { error.value = 'Saisis un code-barres de 8 à 14 chiffres.'; return }
+    try {
+        barcodeBusy.value = true
+        const { product: found } = await api('barcode?code=' + encodeURIComponent(barcodeCode.value.trim()))
+        const prefix = found.basisUnit === 'ml' && quantityKind(found.name) !== 'liquid' ? 'Boisson ' : ''
+        Object.assign(product, { name: prefix + found.name, brand: found.brand, kcal: found.kcal ?? '', protein: found.protein ?? '', carbs: found.carbs ?? '', fat: found.fat ?? '', fiber: found.fiber ?? '' })
+        barcodeSource.value = found.sourceUrl
+        barcodeInfo.value = `Fiche trouvée. Vérifie les valeurs pour 100 ${found.basisUnit || productBasisUnit.value} sur l’emballage avant d’enregistrer.${prefix ? ' Le préfixe « Boisson » permet la saisie en cl.' : ''}${[found.kcal, found.protein, found.carbs, found.fat].some(value => value == null) ? ' Certaines valeurs manquent : complète-les depuis l’étiquette.' : ''}`
+    } catch (e) { error.value = e.message }
+    finally { barcodeBusy.value = false }
+}
+async function startBarcodeScan() {
+    error.value = ''; barcodeInfo.value = ''
+    if (!navigator.mediaDevices?.getUserMedia) { error.value = 'Caméra indisponible ici. Saisis le code-barres manuellement.'; return }
+    try {
+        barcodeScanning.value = true
+        await nextTick()
+        const { BrowserMultiFormatOneDReader } = await import('@zxing/browser')
+        if (!barcodeScanning.value) return
+        const reader = new BrowserMultiFormatOneDReader()
+        const controls = await reader.decodeFromVideoDevice(undefined, barcodeVideo.value, (result, _error, controls) => {
+            if (!result) return
+            controls.stop()
+            barcodeControls = undefined
+            barcodeScanning.value = false
+            barcodeCode.value = result.getText()
+            lookupBarcode()
+        })
+        if (barcodeScanning.value) barcodeControls = controls
+        else controls.stop()
+    } catch { stopBarcodeScan(); error.value = 'Lecture caméra impossible. Autorise l’accès à la caméra ou saisis le code manuellement.' }
+}
+function close() { stopBarcodeScan(); modal.value = ''; error.value = ''; scanInfo.value = ''; barcodeInfo.value = ''; barcodeSource.value = ''; barcodeCode.value = ''; importInfo.value = ''; productForIngredient.value = -1; selectedVegetable.value = ''; selectedCommonFoodPreset.value = '' }
 function applyVegetablePreset() {
     const vegetable = vegetables.find(item => item.name === selectedVegetable.value)
     if (!vegetable) return
@@ -116,6 +212,7 @@ function applyDryYeastPreset() {
 async function send(path, body, method = 'POST') { error.value = ''; try { busy.value = true; await api(path, { method, body: JSON.stringify(body) }); await load(); close(); notice.value = 'Enregistré.'; setTimeout(() => notice.value = '', 3000) } catch (e) { error.value = e.message } finally { busy.value = false } }
 async function saveProduct() {
     error.value = ''
+    if (['kcal', 'protein', 'carbs', 'fat'].some(key => product[key] === '' || product[key] == null)) { error.value = 'Complète les calories et les macronutriments avant d’enregistrer.'; return }
     try {
         busy.value = true
         const result = await api('products', { method: 'POST', body: JSON.stringify({ ...product, kcal: Number(product.kcal), protein: Number(product.protein), carbs: Number(product.carbs), fat: Number(product.fat), fiber: product.fiber === '' ? null : product.fiber }) })
@@ -157,6 +254,12 @@ async function saveFiber(savedProduct) {
 }
 async function saveRecipe() { await send('recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), label: x.label, excluded: x.excluded === true })) }); if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' } }
 async function saveMeal() { await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
+async function updateMeal() {
+    await send(`meals/${encodeURIComponent(editMeal.id)}`, { date: editMeal.date, mealType: editMeal.mealType, quantity: Number(editMeal.quantity) }, 'PATCH')
+}
+async function duplicateMeal(entry) {
+    await send(`meals/${encodeURIComponent(entry.id)}/duplicate`, { date: date.value, mealType: entry.meal_type })
+}
 async function saveReferenceMeal(reference, enteredCount, singular, plural) {
     const count = Number(enteredCount)
     if (!Number.isInteger(count) || count < 1 || count > 99) { error.value = 'Indique un nombre entier entre 1 et 99.'; return }
@@ -182,7 +285,14 @@ async function saveCommonFoodMeal() {
     if (food) await saveReferenceMeal(food, commonMealCount.value, food.singular, food.plural)
 }
 async function saveGoal() { await send('goal', { goal: Number(goal.value) }) }
-async function removeItem(type, id) { if (!confirm('Supprimer cet élément ?')) return; await send(type + '/' + encodeURIComponent(id), {}, 'DELETE') }
+async function removeItem(type, id) {
+    if (!confirm('Supprimer cet élément ?')) return
+    await send(type + '/' + encodeURIComponent(id), {}, 'DELETE')
+    if (!error.value && type === 'meals') {
+        favorites.value = favorites.value.filter(item => item.id !== id)
+        localStorage.setItem('miametrie-favorites', JSON.stringify(favorites.value))
+    }
+}
 function addIngredient() { recipe.ingredients.push({ productId: '', grams: 100, label: '', excluded: false }) }
 function createIngredientProduct(index) {
     productForIngredient.value = index
@@ -302,14 +412,30 @@ async function scanPhoto(event) {
                     <div v-for="m in state.meals" :key="m.id" class="meal">
                         <div class="meal-icon">{{ mealIcon(m.meal_type) }}</div>
                         <div class="meal-info"><b>{{ m.item_name }}</b><span>{{ m.meal_type }} · {{ mealQuantityLabel(m) }}</span></div>
-                        <div class="meal-cal">{{ round(m.kcal) }} kcal</div><button class="icon-button"
+                        <div class="meal-cal">{{ round(m.kcal) }} kcal</div>
+                        <div class="meal-actions"><button class="secondary" :disabled="busy" @click="openEdit(m)">Modifier</button><button class="secondary" :disabled="busy" @click="duplicateMeal(m)">Dupliquer</button><button class="icon-button" :aria-label="isFavorite(m) ? `Retirer ${m.item_name} des favoris` : `Ajouter ${m.item_name} aux favoris`" @click="toggleFavorite(m)">{{ isFavorite(m) ? '★' : '☆' }}</button></div><button class="icon-button"
                             :aria-label="'Supprimer ' + m.item_name" @click="removeItem('meals', m.id)">×</button>
                     </div>
                 </div>
+                <section class="journal-section" aria-labelledby="quick-meals-title">
+                    <div class="section-head"><h2 id="quick-meals-title">Ajouter rapidement</h2></div>
+                    <div class="segment" role="group" aria-label="Choix des repas rapides"><button v-for="option in [{ id: 'recent', label: 'Récents' }, { id: 'frequent', label: 'Fréquents' }, { id: 'favorites', label: 'Favoris' }]" :key="option.id" :class="{ active: suggestionTab === option.id }" @click="suggestionTab = option.id">{{ option.label }}</button></div>
+                    <p v-if="!visibleSuggestions.length" class="empty">{{ suggestionTab === 'favorites' ? 'Ajoute un repas aux favoris avec l’étoile dans le journal.' : 'Tes repas apparaîtront ici après leur premier ajout.' }}</p>
+                    <div v-else class="quick-list"><div v-for="entry in visibleSuggestions" :key="entry.id" class="quick-item"><div><b>{{ entry.item_name }}</b><span>{{ entry.meal_type }} · {{ mealQuantityLabel(entry) }}<template v-if="suggestionTab === 'frequent'"> · {{ entry.count }} fois</template></span></div><button class="secondary" :disabled="busy" @click="duplicateMeal(entry)">Ajouter au jour affiché</button><button v-if="suggestionTab === 'favorites'" class="icon-button" :aria-label="`Retirer ${entry.item_name} des favoris`" @click="toggleFavorite(entry)">×</button></div></div>
+                    <p v-if="suggestionTab === 'favorites'" class="helper">Favoris enregistrés sur cet appareil.</p>
+                </section>
+                <section class="journal-section card trends" aria-labelledby="trends-title">
+                    <div class="section-head trends-head"><h2 id="trends-title">Tendances</h2><div class="segment" role="group" aria-label="Période des tendances"><button :class="{ active: trendDays === 7 }" @click="trendDays = 7">7 jours</button><button :class="{ active: trendDays === 30 }" @click="trendDays = 30">30 jours</button></div></div>
+                    <p class="helper">Jusqu’au {{ new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }) }} · {{ loggedDays.length }} jour{{ loggedDays.length > 1 ? 's' : '' }} renseigné{{ loggedDays.length > 1 ? 's' : '' }} sur {{ trendDays }}. Moyennes calculées sur les jours renseignés.</p>
+                    <div class="trend-stats"><div><b>{{ trendAverage('kcal') }}</b><span>kcal / jour</span></div><div><b>{{ trendAverage('protein') }} g</b><span>protéines / jour</span></div><div><b>{{ knownFiberDays.length ? `${trendAverage('fiber')} g` : '—' }}</b><span>fibres connues / jour*</span></div></div>
+                    <div class="trend-chart" :class="{ monthly: trendDays === 30 }" role="img" :aria-label="`Calories quotidiennes sur ${trendDays} jours, ${loggedDays.length} jours renseignés`"><div v-for="row in trendRows" :key="row.date" class="trend-day" :title="`${row.date} : ${round(row.kcal)} kcal${row.meals ? '' : ' (non renseigné)'}`"><div class="trend-bar" :class="{ missing: !row.meals }" :style="{ height: row.meals ? `${Math.max(4, Number(row.kcal) / trendMax * 100)}%` : '4px' }"></div><span v-if="trendDays === 7">{{ new Date(row.date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short' }) }}</span></div></div>
+                    <p class="helper">* Les fibres inconnues ne sont pas comptées comme zéro.</p>
+                </section>
             </template>
             <template v-else-if="tab === 'products'">
                 <h1 class="heading">Mes produits</h1>
                 <p class="sub">Enregistre un produit une fois, puis retrouve-le à chaque repas.</p>
+                <p class="helper">Les fiches trouvées par code-barres proviennent d’<a href="https://world.openfoodfacts.org/" target="_blank" rel="noopener noreferrer">Open Food Facts</a> (base ODbL). Vérifie toujours les valeurs sur l’emballage.</p>
                 <div v-if="error" class="error" role="alert">{{ error }}</div>
                 <div class="toolbar"><span class="eyebrow">{{ state.products.length }} produit{{
                     state.products.length>1?'s':'' }}</span><button class="primary" @click="open('product')">Ajouter
@@ -332,7 +458,7 @@ async function scanPhoto(event) {
                 </div>
                 <section class="reference-section" aria-labelledby="reference-products-title">
                     <h2 id="reference-products-title">Aliments préremplis</h2>
-                    <p class="sub">Valeurs pour 100 g. Ajoute ceux que tu utilises à Mes produits pour les retrouver dans tes repas et recettes. L’eau peut rester un ingrédient sans calories dans une recette.</p>
+                    <p class="sub">Valeurs pour 100 g. Ajoute ceux que tu utilises à Mes produits pour les retrouver dans tes repas et recettes. Pour les pâtes et le riz, nomme le produit « cru » si ses valeurs correspondent au produit sec.</p>
                     <div class="library">
                         <article v-for="reference in referenceProducts" :key="reference.name" class="item-card">
                             <h3>{{ reference.name }}</h3>
@@ -347,8 +473,7 @@ async function scanPhoto(event) {
             </template>
             <template v-else>
                 <h1 class="heading">Mes recettes</h1>
-                <p class="sub">Importe une recette ou compose-la avec tes produits habituels. Les calories sont
-                    calculées à partir de leurs valeurs.</p>
+                <p class="sub">Importe une recette ou compose-la avec tes produits habituels. Pèse les pâtes et le riz crus avant cuisson, saisis leur poids total et indique le nombre de portions : le calcul se fait par portion, sans peser les assiettes.</p>
                 <div class="toolbar"><span class="eyebrow">{{ state.recipes.length }} recette{{
                     state.recipes.length>1?'s':'' }}</span><button class="primary" @click="open('recipe')">Créer une
                         recette</button></div>
@@ -380,11 +505,18 @@ async function scanPhoto(event) {
         <div v-if="modal" class="modal-backdrop" @click.self="close">
             <section class="modal" role="dialog" aria-modal="true" :aria-label="modal">
                 <div class="modal-head">
-                    <h2>{{ { product: 'Ajouter un produit', recipe: 'Créer une recette', meal: 'Ajouter un repas', goal: 'Objectif quotidien' }[modal] }}</h2><button class="icon-button" aria-label="Fermer"
+                    <h2>{{ { product: 'Ajouter un produit', recipe: 'Créer une recette', meal: 'Ajouter un repas', editMeal: 'Modifier le repas', goal: 'Objectif quotidien' }[modal] }}</h2><button class="icon-button" aria-label="Fermer"
                         @click="close">×</button>
                 </div>
                 <div v-if="error" class="error" role="alert">{{ error }}</div>
                 <form v-if="modal === 'product'" @submit.prevent="saveProduct">
+                    <div class="barcode-box"><b>Scanner un code-barres</b>
+                        <p class="helper">Recherche le produit dans Open Food Facts, puis vérifie sa fiche avant de l’enregistrer.</p>
+                        <div class="barcode-actions"><button v-if="!barcodeScanning" type="button" class="secondary" :disabled="barcodeBusy" @click="startBarcodeScan">Ouvrir la caméra</button><button v-else type="button" class="secondary" @click="stopBarcodeScan">Arrêter la caméra</button></div>
+                        <video v-if="barcodeScanning" ref="barcodeVideo" class="barcode-video" autoplay muted playsinline aria-label="Aperçu de la caméra pour lire le code-barres"></video>
+                        <div class="field"><label for="barcode-code">Ou saisir le code</label><div class="barcode-input"><input id="barcode-code" v-model.trim="barcodeCode" inputmode="numeric" pattern="[0-9]{8,14}" placeholder="Ex. 3017620422003"><button type="button" class="secondary" :disabled="barcodeBusy" @click="lookupBarcode">{{ barcodeBusy ? 'Recherche…' : 'Rechercher' }}</button></div></div>
+                        <p v-if="barcodeInfo" class="helper" role="status">{{ barcodeInfo }} <a v-if="barcodeSource" :href="barcodeSource" target="_blank" rel="noopener noreferrer">Voir la source Open Food Facts</a>.</p>
+                    </div>
                     <div class="upload"><b>Lire une étiquette nutritionnelle</b>
                         <p class="helper">Choisis une image ou prends une photo nette du tableau pour 100 g ou 100 ml.</p>
                         <div class="upload-choices"><label class="secondary upload-button" for="label-import">Importer
@@ -412,6 +544,7 @@ async function scanPhoto(event) {
                     </div>
                     <div class="field"><label for="p-name">Nom du produit</label><input id="p-name"
                             v-model.trim="product.name" required placeholder="Ex. Farine de blé"></div>
+                    <p v-if="productStarchState" class="helper">{{ productStarchState === 'cooked' ? 'Produit cuit : utilise son poids après cuisson et ses valeurs pour 100 g cuits.' : productStarchState === 'raw' ? 'Produit cru : utilise le poids avant cuisson et les valeurs pour 100 g crus (celles du paquet sec).' : 'Précise « cru » ou « cuit » dans le nom et utilise les valeurs pour 100 g correspondantes.' }}</p>
                     <div class="field"><label for="p-brand">Marque (facultatif)</label><input id="p-brand"
                             v-model.trim="product.brand" placeholder="Ex. Chabrior"></div>
                     <p class="tip">Valeurs à saisir pour 100 {{ productBasisUnit }}{{ productBasisUnit === 'ml' ? ' de liquide' : '' }}. Vérifie cette unité sur l’étiquette avant d’enregistrer.</p>
@@ -440,7 +573,7 @@ async function scanPhoto(event) {
                     <div class="field"><label for="r-name">Nom de la recette</label><input id="r-name"
                             v-model.trim="recipe.name" required placeholder="Ex. Gaufres banane"></div>
                     <div class="field"><label for="r-portions">Nombre de portions</label><input id="r-portions"
-                            v-model="recipe.portions" type="number" min="1" max="100" required></div><label
+                            v-model="recipe.portions" type="number" min="1" max="100" required></div><p class="tip">Pâtes et riz : sélectionne un produit dont les valeurs sont pour 100 g crus, puis saisis le poids total avant cuisson. Exemple : 140 g crus pour 2 portions = 70 g crus par portion. La cuisson ajoute de l’eau, sans changer les calories totales.</p><label
                         class="eyebrow">INGRÉDIENTS</label>
                     <p v-if="!state.products.length" class="tip">Ajoute d’abord un produit pour composer ta recette.</p>
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
@@ -454,13 +587,13 @@ async function scanPhoto(event) {
                                 :aria-label="'Quantité en ' + (ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'grammes') + ' pour ' + (ingredientName(line) || 'ingrédient ' + (i + 1))" :placeholder="ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g'"><button
                                 type="button" aria-label="Retirer cet ingrédient"
                                 :disabled="recipe.ingredients.length === 1"
-                                @click="recipe.ingredients.splice(i, 1)">×</button></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}</p><button
+                                @click="recipe.ingredients.splice(i, 1)">×</button></div><p class="helper">Quantité en {{ ingredientKind(line) === 'egg' ? 'œufs' : ingredientKind(line) === 'liquid' ? 'cl' : 'g' }}{{ ingredientStarchState(line) === 'raw' ? ' avant cuisson, pour toute la recette' : '' }}</p><p v-if="ingredientStarchState(line) === 'cooked'" class="helper">Ce produit est cuit : saisis le poids après cuisson, avec ses valeurs pour 100 g cuits.</p><p v-else-if="ingredientStarchState(line) === 'unknown'" class="helper">{{ starchKind(ingredientName(line)) }} : vérifie si ce produit est cru ou cuit avant de saisir son poids.</p><button
                             v-if="line.label && !line.productId && !line.excluded" type="button" class="link-button"
                             @click="createIngredientProduct(i)">Créer « {{ line.label }} » comme produit</button>
                         <label class="ingredient-exclude"><input v-model="line.excluded" type="checkbox" @change="line.productId = ''">Ne pas comptabiliser cet ingrédient (sans produit)</label>
                         <div v-if="line.excluded" class="field"><label :for="'r-excluded-' + i">Nom de l’ingrédient</label><input
                                 :id="'r-excluded-' + i" v-model.trim="line.label" required placeholder="Ex. Eau ou levure boulangère"></div>
-                    </div><button type="button" class="secondary" @click="addIngredient">Ajouter un ingrédient</button>
+                    </div><p v-if="rawStarchPortions.length" class="tip"><span v-for="(item, i) in rawStarchPortions" :key="i">{{ item.total }} g de {{ item.name }} pour {{ recipe.portions }} portion{{ Number(recipe.portions) > 1 ? 's' : '' }} = {{ item.each }} g crus par portion. </span>Ajoute 1 portion au journal si les assiettes sont partagées à peu près également.</p><button type="button" class="secondary" @click="addIngredient">Ajouter un ingrédient</button>
                     <div class="field"><label for="r-instructions">Préparation (facultatif)</label><textarea
                             id="r-instructions" v-model="recipe.instructions" rows="5"
                             placeholder="Étapes de préparation…"></textarea></div>
@@ -503,10 +636,17 @@ async function scanPhoto(event) {
                         </select></div>
                     <p v-if="!items.length" class="tip">Aucun élément disponible. Ajoute d’abord {{
                         meal.itemType === 'recipe' ?'une recette':'un produit' }}.</p>
-                    <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : mealQuantityKind === 'egg' ? 'Nombre d’œufs' : mealQuantityKind === 'liquid' ? 'Quantité (cl)' : 'Quantité (g)'
+                    <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : mealQuantityKind === 'egg' ? 'Nombre d’œufs' : mealQuantityKind === 'liquid' ? 'Quantité (cl)' : starchState(mealProduct?.name) === 'raw' ? 'Quantité crue (g)' : starchState(mealProduct?.name) === 'cooked' ? 'Quantité cuite (g)' : 'Quantité (g)'
                             }}</label><input id="m-quantity" :value="meal.itemType === 'recipe' || meal.quantity === '' ? meal.quantity : quantityFromGrams(meal.quantity, mealQuantityKind)" @input="meal.itemType === 'recipe' ? meal.quantity = $event.target.value : setMealQuantity($event.target.value)" type="number" min="0.1" step="0.1"
-                            required></div><p v-if="meal.itemType === 'product' && mealQuantityKind === 'liquid'" class="helper">1 cl = 10 ml ; calcul à partir des valeurs pour 100 ml.</p><button class="primary full" :disabled="busy || !items.length">Ajouter au
+                            required></div><p v-if="meal.itemType === 'recipe'" class="helper">1 portion correspond à 1 part de la recette enregistrée. Si les parts sont similaires, pas besoin de peser l’assiette.</p><p v-if="meal.itemType === 'product' && mealQuantityKind === 'liquid'" class="helper">1 cl = 10 ml ; calcul à partir des valeurs pour 100 ml.</p><button class="primary full" :disabled="busy || !items.length">Ajouter au
                         journal</button>
+                </form>
+                <form v-else-if="modal === 'editMeal'" @submit.prevent="updateMeal">
+                    <p class="helper">{{ editMeal.itemName }}</p>
+                    <div class="field"><label for="edit-date">Date</label><input id="edit-date" v-model="editMeal.date" type="date" required></div>
+                    <div class="field"><label for="edit-type">Moment du repas</label><select id="edit-type" v-model="editMeal.mealType"><option>Petit-déjeuner</option><option>Déjeuner</option><option>Dîner</option><option>Collation</option></select></div>
+                    <div class="field"><label for="edit-quantity">{{ editMeal.itemType === 'recipe' ? 'Portions' : quantityKind(editMeal.itemName) === 'egg' ? 'Nombre d’œufs' : quantityKind(editMeal.itemName) === 'liquid' ? 'Quantité (cl)' : starchState(editMeal.itemName) === 'raw' ? 'Quantité crue (g)' : starchState(editMeal.itemName) === 'cooked' ? 'Quantité cuite (g)' : 'Quantité (g)' }}</label><input id="edit-quantity" :value="editMeal.itemType === 'recipe' || editMeal.quantity === '' ? editMeal.quantity : quantityFromGrams(editMeal.quantity, quantityKind(editMeal.itemName))" @input="setEditQuantity($event.target.value)" type="number" min="0.1" step="0.1" required></div>
+                    <button class="primary full" :disabled="busy">Enregistrer les modifications</button>
                 </form>
                 <form v-else @submit.prevent="saveGoal">
                     <div class="field"><label for="goal">Objectif calorique quotidien (kcal)</label><input id="goal"

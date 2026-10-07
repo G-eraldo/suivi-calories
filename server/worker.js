@@ -1,3 +1,7 @@
+import { parseOpenFoodFactsProduct } from '../utils/open-food-facts.js'
+
+const barcodeCache = new Map()
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -57,6 +61,25 @@ async function api(request, env, url) {
     method = request.method,
     parts = url.pathname.split("/").filter(Boolean).slice(1);
   try {
+    if (method === "GET" && parts[0] === "barcode" && parts.length === 1) {
+      const code = url.searchParams.get("code") || "";
+      if (!/^\d{8,14}$/.test(code)) return fail("Saisis un code-barres de 8 à 14 chiffres.");
+      const cached = barcodeCache.get(code);
+      if (cached && cached.until > Date.now()) return json(cached.data);
+      const upstream = await fetch(`https://world.openfoodfacts.org/api/v3/product/${code}?fields=code,product_name,brands,quantity,product_quantity,product_quantity_unit,nutriments`, {
+        headers: { "User-Agent": "Miametrie/1.0 (https://github.com/G-eraldo/suivi-calories)", "Accept": "application/json" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (upstream.status === 404) return fail("Produit absent d’Open Food Facts. Utilise la photo de l’étiquette ou la saisie manuelle.", 404);
+      if (!upstream.ok) return fail("Open Food Facts est momentanément indisponible. Réessaie ou saisis l’étiquette.", 503);
+      const result = await upstream.json();
+      const product = parseOpenFoodFactsProduct(result.product, code);
+      if (!product || !product.name) return fail("Fiche incomplète. Utilise la photo de l’étiquette ou la saisie manuelle.", 404);
+      const data = { product };
+      if (barcodeCache.size >= 100) barcodeCache.delete(barcodeCache.keys().next().value);
+      barcodeCache.set(code, { data, until: Date.now() + 60 * 60 * 1000 });
+      return json(data);
+    }
     if (method === "GET" && parts[0] === "state") {
       const day = dateValid(url.searchParams.get("date"))
         ? url.searchParams.get("date")
@@ -101,6 +124,32 @@ async function api(request, env, url) {
         }),
         meals,
       });
+    }
+    if (method === "GET" && parts[0] === "recent-meals") {
+      const rows = await all(db,
+        "SELECT id,item_type,item_id,item_name,meal_type,quantity,kcal,protein,carbs,fat,fiber,eaten_on FROM meals WHERE owner_id = ? ORDER BY eaten_on DESC, created_at DESC LIMIT 150",
+        owner,
+      );
+      const suggestions = new Map();
+      for (const row of rows) {
+        const key = `${row.item_type}:${row.item_id}:${row.quantity}:${row.meal_type}`;
+        const existing = suggestions.get(key);
+        if (existing) existing.count++;
+        else suggestions.set(key, { ...row, count: 1 });
+      }
+      return json({ recent: [...suggestions.values()].slice(0, 8), frequent: [...suggestions.values()].sort((a, b) => b.count - a.count).slice(0, 8) });
+    }
+    if (method === "GET" && parts[0] === "trends") {
+      const end = url.searchParams.get("end");
+      const days = Number(url.searchParams.get("days"));
+      if (!dateValid(end) || ![7, 30].includes(days)) return fail("Période invalide.");
+      const start = new Date(`${end}T12:00:00Z`);
+      start.setUTCDate(start.getUTCDate() - days + 1);
+      const rows = await all(db,
+        "SELECT eaten_on,COUNT(*) AS meals,SUM(kcal) AS kcal,SUM(protein) AS protein,SUM(carbs) AS carbs,SUM(fat) AS fat,SUM(fiber) AS fiber,COUNT(fiber) AS fiber_known FROM meals WHERE owner_id = ? AND eaten_on >= ? AND eaten_on <= ? GROUP BY eaten_on ORDER BY eaten_on",
+        owner, start.toISOString().slice(0, 10), end,
+      );
+      return json({ start: start.toISOString().slice(0, 10), end, days, rows });
     }
     if (method === "POST" && parts[0] === "goal") {
       const b = await bodyOf(request),
@@ -216,7 +265,7 @@ async function api(request, env, url) {
         .run();
       return json({ id }, 201);
     }
-    if (method === "POST" && parts[0] === "meals") {
+    if (method === "POST" && parts[0] === "meals" && parts.length === 1) {
       const b = await bodyOf(request),
         quantity = numeric(b?.quantity, 0.1, 100000);
       if (
@@ -261,6 +310,31 @@ async function api(request, env, url) {
         )
         .run();
       return json({ id }, 201);
+    }
+    if (parts[0] === "meals" && parts[1] && ["PATCH", "POST"].includes(method)) {
+      const duplicate = method === "POST" && parts[2] === "duplicate";
+      if (!duplicate && (method !== "PATCH" || parts.length !== 2)) return fail("Action introuvable.", 404);
+      const original = await one(db,
+        "SELECT id,item_type,item_id,item_name,meal_type,quantity,kcal,protein,carbs,fat,fiber FROM meals WHERE id = ? AND owner_id = ?",
+        parts[1], owner,
+      );
+      if (!original) return fail("Ce repas est introuvable.", 404);
+      const b = await bodyOf(request);
+      const quantity = duplicate ? original.quantity : numeric(b?.quantity, 0.1, 100000);
+      if (!dateValid(b?.date) || !["Petit-déjeuner", "Déjeuner", "Dîner", "Collation"].includes(b?.mealType) || !quantity)
+        return fail("Vérifie la date, le moment et la quantité du repas.");
+      if (duplicate) {
+        const id = crypto.randomUUID();
+        await db.prepare("INSERT INTO meals (id,owner_id,eaten_on,meal_type,item_type,item_id,item_name,quantity,kcal,protein,carbs,fat,fiber,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .bind(id, owner, b.date, b.mealType, original.item_type, original.item_id, original.item_name, original.quantity, original.kcal, original.protein, original.carbs, original.fat, original.fiber, new Date().toISOString()).run();
+        return json({ id }, 201);
+      }
+      const factor = quantity / original.quantity;
+      const values = ["kcal", "protein", "carbs", "fat"].map(key => Math.round(original[key] * factor * 10000) / 10000);
+      const fiber = original.fiber == null ? null : Math.round(original.fiber * factor * 10000) / 10000;
+      await db.prepare("UPDATE meals SET eaten_on = ?,meal_type = ?,quantity = ?,kcal = ?,protein = ?,carbs = ?,fat = ?,fiber = ? WHERE id = ? AND owner_id = ?")
+        .bind(b.date, b.mealType, quantity, ...values, fiber, parts[1], owner).run();
+      return json({ ok: true });
     }
     if (
       method === "DELETE" &&

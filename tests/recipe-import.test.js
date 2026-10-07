@@ -72,3 +72,13 @@ test('ne confond pas une pomme avec une pomme de terre', () => {
   assert.equal(matchProduct('pommes de terre', [potato, apple])?.id, 'potato')
   assert.equal(matchProduct('pomme', [potato]), null)
 })
+
+test('un féculent pesé cru ne reprend pas les valeurs du produit cuit', () => {
+  const pastaCooked = { id: 'pasta-cooked', name: 'Pâtes cuites' }
+  const pastaRaw = { id: 'pasta-raw', name: 'Pâtes crues' }
+  const riceCooked = { id: 'rice-cooked', name: 'Riz cuit' }
+  assert.equal(matchProduct('pâtes crues', [pastaCooked, pastaRaw])?.id, 'pasta-raw')
+  assert.equal(matchProduct('pâtes', [pastaCooked]), null)
+  assert.equal(matchProduct('riz cru', [riceCooked]), null)
+  assert.equal(matchProduct('riz cuit', [riceCooked])?.id, 'rice-cooked')
+})
