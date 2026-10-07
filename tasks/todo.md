@@ -1,3 +1,9 @@
+# Modification des recettes
+
+- [x] Préremplir le formulaire depuis une recette enregistrée et signaler les unités d’ingrédients à revérifier.
+- [x] Mettre à jour la recette côté API avec recalcul des valeurs par portion, sans réécrire les repas passés.
+- [x] Vérifier l’édition, les droits d’accès, les tests et le build.
+
 # Affichage des repas sur mobile
 
 - [x] Regrouper les aliments du journal par moment de repas dans une seule carte.

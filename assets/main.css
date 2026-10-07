@@ -533,6 +533,9 @@ button:disabled {
 .item-actions button {
   flex: 1;
 }
+.item-actions .icon-button {
+  flex: 0 0 36px;
+}
 .reference-section {
   margin-top: 38px;
 }

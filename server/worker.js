@@ -202,7 +202,10 @@ async function api(request, env, url) {
         .bind(b?.fiber === undefined ? product.fiber : fiber, basisUnit, parts[1], owner).run();
       return json({ ok: true });
     }
-    if (method === "POST" && parts[0] === "recipes") {
+    if (parts[0] === "recipes" && ((method === "POST" && parts.length === 1) || (method === "PATCH" && parts.length === 2))) {
+      const updating = method === "PATCH";
+      if (updating && !await one(db, "SELECT id FROM recipes WHERE id = ? AND owner_id = ?", parts[1], owner))
+        return fail("Cette recette est introuvable.", 404);
       const b = await bodyOf(request),
         name = cleanName(b?.name),
         portions = numeric(b?.portions, 1, 100);
@@ -250,6 +253,14 @@ async function api(request, env, url) {
       }
       if (saved.every((line) => line.excluded))
         return fail("Sélectionne au moins un produit comptabilisé pour la recette.");
+      const values = Object.values(totals).map(x => Math.round(x / portions * 10) / 10);
+      const fiber = fibers.some(value => value === null) ? null : Math.round(fibers.reduce((sum, value) => sum + value, 0) / portions * 10) / 10;
+      const ingredientsJson = JSON.stringify({ ingredients: saved, instructions });
+      if (updating) {
+        await db.prepare("UPDATE recipes SET name = ?,portions = ?,ingredients_json = ?,kcal = ?,protein = ?,carbs = ?,fat = ?,fiber = ? WHERE id = ? AND owner_id = ?")
+          .bind(name, portions, ingredientsJson, ...values, fiber, parts[1], owner).run();
+        return json({ id: parts[1] });
+      }
       const id = crypto.randomUUID();
       await db
         .prepare(
@@ -260,11 +271,9 @@ async function api(request, env, url) {
           owner,
           name,
           portions,
-          JSON.stringify({ ingredients: saved, instructions }),
-          ...Object.values(totals).map(
-            (x) => Math.round((x / portions) * 10) / 10,
-          ),
-          fibers.some((value) => value === null) ? null : Math.round(fibers.reduce((sum, value) => sum + value, 0) / portions * 10) / 10,
+          ingredientsJson,
+          ...values,
+          fiber,
           new Date().toISOString(),
         )
         .run();
