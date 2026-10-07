@@ -58,6 +58,13 @@ test('estime les œufs, bananes et pommes en partie comestible', () => {
   assert.deepEqual(recipe.ingredients.map(line => line.grams), [100, 118, 182])
 })
 
+test('conserve 50 cl de lait comme 500 ml pour le calcul et une quantité exacte', () => {
+  const [milk] = parseRecipe('Ingrédients\n• 50 cl de lait').ingredients
+  assert.equal(milk.label, 'lait')
+  assert.equal(milk.grams, 500)
+  assert.equal(milk.estimated, false)
+})
+
 test('ne confond pas une pomme avec une pomme de terre', () => {
   const apple = { id: 'apple', name: 'Pomme (crue, avec peau, sans trognon)' }
   const potato = { id: 'potato', name: 'Pomme de terre (crue, avec peau)' }

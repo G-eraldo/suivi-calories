@@ -8,3 +8,4 @@
 - Dans une recette, permettre de conserver un ingrédient sans produit nutritionnel avec une exclusion explicite du calcul.
 - Pour un ingrédient courant sans étiquette, proposer une valeur nutritionnelle de référence sourcée et modifiable.
 - Afficher les références préremplies dans la rubrique où l’utilisateur cherche ses produits, même avant leur enregistrement personnel.
+- Pour un liquide saisi en cl, afficher les valeurs nutritionnelles par 100 ml et calculer la portion en ml, sans présenter le volume comme une masse réelle.

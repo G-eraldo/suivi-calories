@@ -23,6 +23,6 @@ export function parseNutritionLabel(text) {
     values[key] = firstNumber(afterLabel)
     if (values[key] === null && index + 1 < lines.length) values[key] = firstNumber(lines[index + 1])
   }
-  const hasPer100g = /(?:pour|per|par|valeurs? nutritionnelles? pour)?\s*100\s*(?:g|ml)\b/i.test(normalized(text))
-  return { values, hasPer100g }
+  const per100Unit = normalized(text).match(/\b(?:pour|per|par)\s*100\s*(g|ml)\b/i)?.[1] || null
+  return { values, per100Unit }
 }

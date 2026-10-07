@@ -12,7 +12,7 @@ Suivi personnel des repas, produits et recettes. L'interface est construite avec
 
 Une nouvelle base Supabase démarre vide. Les données d'un éventuel ancien fichier SQLite ne sont pas transférées automatiquement. Si le fichier existe encore dans un ancien conteneur ou une sauvegarde Dokploy, conserve-le pour une importation ultérieure. La route `/health` répond sans authentification pour les contrôles de santé.
 
-Les fibres sont facultatives et indiquées pour 100 g de produit. Une valeur absente signifie « inconnue » et n'est pas comptée comme 0 g. Les produits déjà enregistrés peuvent être complétés dans l'onglet Produits ; les recettes et repas déjà enregistrés gardent leurs valeurs historiques.
+Les valeurs nutritionnelles, dont les fibres facultatives, sont indiquées pour 100 g de produit solide ou 100 ml de liquide. Pour les liquides, 1 cl = 10 ml dans la saisie et le calcul. Une valeur de fibres absente signifie « inconnue » et n'est pas comptée comme 0 g. Les produits déjà enregistrés peuvent être complétés dans l'onglet Produits ; les recettes et repas déjà enregistrés gardent leurs valeurs historiques.
 
 Sur iPhone, connecte-toi une fois après le déploiement : le serveur garde ensuite une session sécurisée pendant 90 jours, renouvelée lorsque l'application est utilisée. Si le raccourci existant affiche encore une icône générique, supprime-le puis ajoute de nouveau le site à l'écran d'accueil depuis Safari ; iOS conserve l'icône choisie au moment de l'ajout.
 

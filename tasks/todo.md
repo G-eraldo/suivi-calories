@@ -1,3 +1,8 @@
+# Base nutritionnelle des liquides
+
+- [x] Indiquer 100 ml pour les produits liquides et faire correspondre les explications aux calculs en volume.
+- [x] Vérifier le lait à 50 cl, les tests et le build, puis pousser sur main.
+
 # Unités des quantités
 
 - [x] Saisir et afficher les liquides en cl et les œufs en pièces dans les repas et recettes.

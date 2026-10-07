@@ -6,6 +6,8 @@ test('convertit les liquides en cl pour la saisie et la lecture', () => {
   for (const name of ['Eau', 'Lait entier', "Huile d’olive", 'Jus de pomme']) assert.equal(quantityKind(name), 'liquid')
   assert.equal(quantityFromGrams(47, 'liquid'), 4.7)
   assert.equal(gramsFromQuantity(4.7, 'liquid'), 47)
+  assert.equal(gramsFromQuantity(50, 'liquid'), 500)
+  assert.equal(quantityFromGrams(500, 'liquid'), 50)
   assert.equal(quantityText(250, 'Lait entier'), '25 cl')
   assert.equal(quantityKind('Yaourt au lait'), 'solid')
 })

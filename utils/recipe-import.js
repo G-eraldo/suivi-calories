@@ -46,7 +46,7 @@ function ingredientLine(line) {
     const food = commonFoodForIngredient(label)
     if (food) grams = quantity * food.grams
   }
-  return { label, grams: grams ? Math.round(grams * 10) / 10 : null, original: clean, estimated: !unit || ['ml', 'cl', 'l'].includes(unit) || unit.startsWith('litre'), unit }
+  return { label, grams: grams ? Math.round(grams * 10) / 10 : null, original: clean, estimated: !unit, unit }
 }
 export function parseRecipe(text) {
   const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)

@@ -127,7 +127,7 @@ async function api(request, env, url) {
       if (!name || values.some((x) => x === null))
         return fail("Complète le nom et les valeurs nutritionnelles.");
       if (fiber === null && b?.fiber !== undefined && b?.fiber !== null && b?.fiber !== "")
-        return fail("Vérifie la quantité de fibres pour 100 g.");
+        return fail("Vérifie la quantité de fibres pour 100 g ou 100 ml.");
       const id = crypto.randomUUID();
       await db
         .prepare(
@@ -141,7 +141,7 @@ async function api(request, env, url) {
       const b = await bodyOf(request);
       const fiber = b?.fiber === null || b?.fiber === "" ? null : numeric(b?.fiber, 0, 100);
       if (fiber === null && b?.fiber !== null && b?.fiber !== "")
-        return fail("Vérifie la quantité de fibres pour 100 g.");
+        return fail("Vérifie la quantité de fibres pour 100 g ou 100 ml.");
       const product = await one(db, "SELECT id FROM products WHERE id = ? AND owner_id = ?", parts[1], owner);
       if (!product) return fail("Ce produit est introuvable.", 404);
       await db.prepare("UPDATE products SET fiber = ? WHERE id = ? AND owner_id = ?")
@@ -187,6 +187,8 @@ async function api(request, env, url) {
           owner,
         );
         if (!p) return fail("Un produit de la recette est introuvable.");
+        // For liquids, the legacy `grams` value represents milliliters and
+        // product nutrition is entered per 100 ml; solids remain per 100 g.
         for (const key of Object.keys(totals))
           totals[key] += (p[key] * grams) / 100;
         fibers.push(p.fiber == null ? null : (p.fiber * grams) / 100);
@@ -235,6 +237,7 @@ async function api(request, env, url) {
         owner,
       );
       if (!item) return fail("Ce produit ou cette recette est introuvable.");
+      // Product quantities use grams for solids and milliliters for liquids.
       const factor = b.itemType === "product" ? quantity / 100 : quantity;
       const id = crypto.randomUUID();
       await db

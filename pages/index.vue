@@ -24,6 +24,7 @@ const selectedVegetable = ref('')
 const selectedVegetableSource = computed(() => vegetables.find(item => item.name === selectedVegetable.value)?.fdcId)
 const selectedCommonFoodPreset = ref('')
 const commonFoodPreset = computed(() => commonFoods.find(item => item.id === selectedCommonFoodPreset.value))
+const productBasisUnit = computed(() => quantityKind(product.name) === 'liquid' ? 'ml' : 'g')
 const recipe = reactive({ name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] })
 const importText = ref('')
 const importBusy = ref(false)
@@ -53,7 +54,7 @@ onMounted(async () => {
         execute: () => ({ date: date.value, goal: state.value.goal, totals: totals.value, products: state.value.products, recipes: state.value.recipes, meals: state.value.meals })
     })
     await register({
-        name: 'create_product', title: 'Enregistrer un produit', description: 'Enregistrer un produit avec ses valeurs nutritionnelles pour 100 g.',
+        name: 'create_product', title: 'Enregistrer un produit', description: 'Enregistrer un produit avec ses valeurs nutritionnelles pour 100 g, ou pour 100 ml si le produit est liquide.',
         inputSchema: { type: 'object', properties: { name: { type: 'string' }, brand: { type: 'string' }, kcal: { type: 'number', minimum: 0 }, protein: { type: 'number', minimum: 0 }, carbs: { type: 'number', minimum: 0 }, fat: { type: 'number', minimum: 0 }, fiber: { type: 'number', minimum: 0, maximum: 100 } }, required: ['name', 'kcal', 'protein', 'carbs', 'fat'], additionalProperties: false },
         annotations: { readOnlyHint: false },
         async execute(input) { if (!input?.name?.trim() || ['kcal', 'protein', 'carbs', 'fat'].some(k => !Number.isFinite(input[k]) || input[k] < 0) || (input.fiber !== undefined && (!Number.isFinite(input.fiber) || input.fiber < 0 || input.fiber > 100))) throw new Error('Valeurs nutritionnelles invalides.'); const result = await api('products', { method: 'POST', body: JSON.stringify(input) }); await load(); return { id: result.id, name: input.name } }
@@ -204,7 +205,7 @@ function importRecipe() {
         const excluded = /^eau(?:\b|\s)/i.test(line.label.trim())
         return { productId: excluded ? '' : matchProduct(line.label, state.value.products)?.id || '', grams: line.grams || '', label: line.label, original: line.original, estimated: line.estimated, excluded }
     })
-    importInfo.value = `${parsed.ingredients.length} ingrédient${parsed.ingredients.length > 1 ? 's' : ''} détecté${parsed.ingredients.length > 1 ? 's' : ''}. Vérifie les produits et les poids avant d’enregistrer.`
+    importInfo.value = `${parsed.ingredients.length} ingrédient${parsed.ingredients.length > 1 ? 's' : ''} détecté${parsed.ingredients.length > 1 ? 's' : ''}. Vérifie les produits et les quantités avant d’enregistrer.`
 }
 async function readRecipePhoto(event) {
     const file = event.target.files?.[0]
@@ -228,10 +229,10 @@ async function scanPhoto(event) {
         const { createWorker } = await import('tesseract.js')
         worker = await createWorker('fra+eng')
         const result = await worker.recognize(file)
-        const { values, hasPer100g } = parseNutritionLabel(result.data.text)
+        const { values, per100Unit } = parseNutritionLabel(result.data.text)
         for (const [key, value] of Object.entries(values)) if (value !== null) product[key] = value
         const count = Object.values(values).filter(v => v !== null).length
-        scanInfo.value = count ? `${count} valeur${count > 1 ? 's' : ''} détectée${count > 1 ? 's' : ''}. ${hasPer100g ? 'Vérifie les chiffres avant d’enregistrer.' : 'Vérifie surtout que les chiffres sont donnés pour 100 g ou 100 ml.'}` : 'Aucune valeur reconnue. Essaie une photo plus nette du tableau nutritionnel ou saisis les chiffres.'
+        scanInfo.value = count ? `${count} valeur${count > 1 ? 's' : ''} détectée${count > 1 ? 's' : ''}. ${per100Unit && per100Unit !== productBasisUnit.value ? `L’étiquette indique 100 ${per100Unit}, mais ce produit attend des valeurs pour 100 ${productBasisUnit.value} : vérifie avant d’enregistrer.` : `Vérifie que les valeurs sont données pour 100 ${productBasisUnit.value}${per100Unit ? '.' : ' : l’unité n’a pas été reconnue.'}`}` : 'Aucune valeur reconnue. Essaie une photo plus nette du tableau nutritionnel ou saisis les chiffres.'
     } catch (e) { error.value = 'Lecture impossible. Tu peux saisir les valeurs manuellement.'; scanInfo.value = '' }
     finally { await worker?.terminate(); scanBusy.value = false; event.target.value = '' }
 }
@@ -318,11 +319,11 @@ async function scanPhoto(event) {
                 <div v-else class="library">
                     <article v-for="p in state.products" :key="p.id" class="item-card">
                         <h3>{{ p.name }}</h3>
-                        <p>{{ p.brand || 'Pour 100 g' }}</p>
+                        <p>{{ p.brand ? `${p.brand} · ` : '' }}Valeurs pour 100 {{ quantityKind(p.name) === 'liquid' ? 'ml' : 'g' }}</p>
                         <div class="nutrition"><span><b>{{ round(p.kcal) }}</b> kcal</span><span>P {{ round(p.protein)
                                 }} g</span><span>G {{ round(p.carbs) }} g</span><span>L {{ round(p.fat) }} g</span><span>Fibres {{ p.fiber == null ? '—' : `${p.fiber} g` }}</span>
                         </div>
-                        <div class="fiber-edit"><label :for="`fiber-${p.id}`">Fibres / 100 g</label><input :id="`fiber-${p.id}`" type="number" min="0" max="100" step="0.01" :value="p.fiber ?? ''" placeholder="Inconnu" @input="fiberEdits[p.id] = $event.target.value"><button class="secondary" :disabled="busy" @click="saveFiber(p)">Enregistrer</button></div>
+                        <div class="fiber-edit"><label :for="`fiber-${p.id}`">Fibres / 100 {{ quantityKind(p.name) === 'liquid' ? 'ml' : 'g' }}</label><input :id="`fiber-${p.id}`" type="number" min="0" max="100" step="0.01" :value="p.fiber ?? ''" placeholder="Inconnu" @input="fiberEdits[p.id] = $event.target.value"><button class="secondary" :disabled="busy" @click="saveFiber(p)">Enregistrer</button></div>
                         <div class="item-actions"><button class="secondary"
                                 @click="tab = 'journal'; open('meal'); meal.itemId = p.id; selectMealProduct()">Ajouter au journal</button><button
                                 class="icon-button" :aria-label="'Supprimer ' + p.name"
@@ -385,7 +386,7 @@ async function scanPhoto(event) {
                 <div v-if="error" class="error" role="alert">{{ error }}</div>
                 <form v-if="modal === 'product'" @submit.prevent="saveProduct">
                     <div class="upload"><b>Lire une étiquette nutritionnelle</b>
-                        <p class="helper">Choisis une image ou prends une photo nette du tableau pour 100 g.</p>
+                        <p class="helper">Choisis une image ou prends une photo nette du tableau pour 100 g ou 100 ml.</p>
                         <div class="upload-choices"><label class="secondary upload-button" for="label-import">Importer
                                 une
                                 image</label><input id="label-import" type="file" accept="image/*" :disabled="scanBusy"
@@ -413,9 +414,7 @@ async function scanPhoto(event) {
                             v-model.trim="product.name" required placeholder="Ex. Farine de blé"></div>
                     <div class="field"><label for="p-brand">Marque (facultatif)</label><input id="p-brand"
                             v-model.trim="product.brand" placeholder="Ex. Chabrior"></div>
-                    <p class="tip">Les valeurs détectées remplissent le formulaire. Vérifie le nom, les chiffres et la
-                        base «
-                        pour 100 g » avant d’enregistrer.</p>
+                    <p class="tip">Valeurs à saisir pour 100 {{ productBasisUnit }}{{ productBasisUnit === 'ml' ? ' de liquide' : '' }}. Vérifie cette unité sur l’étiquette avant d’enregistrer.</p>
                     <div class="grid2">
                         <div v-for="f in [{ key: 'kcal', label: 'Calories (kcal)' }, { key: 'protein', label: 'Protéines (g)' }, { key: 'carbs', label: 'Glucides (g)' }, { key: 'fat', label: 'Lipides (g)' }]"
                             :key="f.key" class="field"><label :for="f.key">{{ f.label }}</label><input :id="f.key"
@@ -465,7 +464,7 @@ async function scanPhoto(event) {
                     <div class="field"><label for="r-instructions">Préparation (facultatif)</label><textarea
                             id="r-instructions" v-model="recipe.instructions" rows="5"
                             placeholder="Étapes de préparation…"></textarea></div>
-                    <p class="tip">Pour les liquides, 1 cl correspond approximativement à 10 g dans le calcul. Les ingrédients marqués « Ne pas comptabiliser » restent dans la recette, sans calories ajoutées.</p><button class="primary full"
+                    <p class="tip">Pour les liquides, 1 cl = 10 ml et le calcul utilise les valeurs pour 100 ml. Les ingrédients marqués « Ne pas comptabiliser » restent dans la recette, sans calories ajoutées.</p><button class="primary full"
                         :disabled="busy || importBusy || !state.products.length">Enregistrer la recette</button>
                 </form>
                 <form v-else-if="modal === 'meal'" @submit.prevent="saveMeal">
@@ -506,7 +505,7 @@ async function scanPhoto(event) {
                         meal.itemType === 'recipe' ?'une recette':'un produit' }}.</p>
                     <div class="field"><label for="m-quantity">{{ meal.itemType === 'recipe' ? 'Portions' : mealQuantityKind === 'egg' ? 'Nombre d’œufs' : mealQuantityKind === 'liquid' ? 'Quantité (cl)' : 'Quantité (g)'
                             }}</label><input id="m-quantity" :value="meal.itemType === 'recipe' || meal.quantity === '' ? meal.quantity : quantityFromGrams(meal.quantity, mealQuantityKind)" @input="meal.itemType === 'recipe' ? meal.quantity = $event.target.value : setMealQuantity($event.target.value)" type="number" min="0.1" step="0.1"
-                            required></div><p v-if="meal.itemType === 'product' && mealQuantityKind === 'liquid'" class="helper">1 cl correspond approximativement à 10 g pour le calcul nutritionnel.</p><button class="primary full" :disabled="busy || !items.length">Ajouter au
+                            required></div><p v-if="meal.itemType === 'product' && mealQuantityKind === 'liquid'" class="helper">1 cl = 10 ml ; calcul à partir des valeurs pour 100 ml.</p><button class="primary full" :disabled="busy || !items.length">Ajouter au
                         journal</button>
                 </form>
                 <form v-else @submit.prevent="saveGoal">
