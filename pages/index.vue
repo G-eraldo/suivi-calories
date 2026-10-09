@@ -628,7 +628,7 @@ async function scanPhoto(event) {
                                     reference.fat }} g</span><span>Fibres {{ reference.fiber == null ? '—' :
                                     `${reference.fiber} g` }}</span></div>
                             <p v-if="reference.grams" class="reference-serving">1 {{ reference.singular || 'cône' }}{{
-                                reference.id === 'egg' ? '' : ` ≈ ${reference.grams} g` }} · {{ round(reference.kcal *
+                                ['egg', 'grapes'].includes(reference.id) ? '' : ` ≈ ${reference.grams} g` }} · {{ round(reference.kcal *
                                 reference.grams / 100) }} kcal</p>
                             <p v-else-if="reference.name === dryYeast.name" class="reference-serving">5 g ≈ {{
                                 round(reference.kcal * 5 / 100) }} kcal</p>
@@ -752,7 +752,7 @@ async function scanPhoto(event) {
                         </select>
                         <p v-if="commonFoodPreset" class="helper">Valeurs pour 100 g d’aliment cru, partie comestible. 1
                             {{
-                            commonFoodPreset.singular }}{{ commonFoodPreset.id === 'egg' ? '' : ` ≈
+                            commonFoodPreset.singular }}{{ ['egg', 'grapes'].includes(commonFoodPreset.id) ? '' : ` ≈
                             ${commonFoodPreset.grams} g`
                             }} apporte {{ round(commonFoodPreset.kcal * commonFoodPreset.grams / 100) }} kcal. <a
                                 :href="`https://fdc.nal.usda.gov/food-details/${commonFoodPreset.fdcId}/nutrients`"
@@ -905,13 +905,12 @@ async function scanPhoto(event) {
                                 <option v-for="food in commonFoods" :key="food.id" :value="food.id">{{ food.name }}
                                 </option>
                             </select></div>
-                        <p v-if="commonMealFood" class="helper">1 {{ commonMealFood.singular }}{{ commonMealFood.id ===
-                            'egg' ?
+                        <p v-if="commonMealFood" class="helper">1 {{ commonMealFood.singular }}{{ ['egg', 'grapes'].includes(commonMealFood.id) ?
                             '' : ` ≈ ${commonMealFood.grams} g de partie comestible` }}, soit {{
                                 round(commonMealFood.kcal *
                             commonMealFood.grams / 100) }} kcal. Pour une autre quantité, utilise le champ ci-dessous.
                         </p>
-                        <div class="field"><label for="m-common-count">Nombre de pièces</label><input
+                        <div class="field"><label for="m-common-count">{{ commonMealFood?.id === 'grapes' ? 'Nombre de portions de 100 g' : 'Nombre de pièces' }}</label><input
                                 id="m-common-count" v-model="commonMealCount" type="number" min="1" max="99" step="1">
                         </div>
                         <button type="button" class="secondary" :disabled="busy" @click="saveCommonFoodMeal">Ajouter au

@@ -41,6 +41,20 @@ export const commonFoods = [
     fat: 0.17,
     fdcId: 171688,
   },
+  {
+    id: "grapes",
+    name: "Raisin (cru)",
+    brand: "",
+    singular: "portion de 100 g de raisin",
+    plural: "portions de 100 g de raisin",
+    grams: 100,
+    kcal: 69,
+    protein: 0.72,
+    carbs: 18.1,
+    fat: 0.16,
+    fiber: 0.9,
+    fdcId: 174683,
+  },
 ];
 
 export function commonFoodForIngredient(label) {
