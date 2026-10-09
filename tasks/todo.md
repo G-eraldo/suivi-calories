@@ -1,3 +1,9 @@
+# Recettes dans les recettes
+
+- [x] Permettre de choisir une recette enregistrée comme ingrédient, avec une quantité en portions.
+- [x] Calculer et enregistrer ses valeurs nutritionnelles côté serveur, avec contrôle du propriétaire.
+- [x] Conserver la sélection à l’édition et vérifier les calculs, validations et la compilation.
+
 # Sélecteur visible avec le clavier iPhone
 
 - [x] Repositionner le menu dans la zone visible du navigateur quand le clavier s’ouvre.

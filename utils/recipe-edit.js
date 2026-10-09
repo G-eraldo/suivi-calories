@@ -6,6 +6,12 @@ export function recipeForEditing(saved, products) {
     portions: saved.portions,
     instructions: saved.instructions || "",
     ingredients: saved.ingredients.map((line) => {
+      if (line.recipeId)
+        return {
+          recipeId: line.recipeId,
+          portions: line.portions,
+          label: line.name,
+        };
       if (line.excluded)
         return {
           productId: "",

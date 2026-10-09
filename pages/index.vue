@@ -181,6 +181,10 @@ function toggleFavorite(entry) {
 }
 function open(name) { error.value = ''; notice.value = ''; modal.value = name; if (name === 'recipe') { editingRecipeId.value = ''; importText.value = ''; Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }) } if (name === 'meal') { meal.itemType = 'product'; meal.itemId = ''; meal.mealType = 'Déjeuner'; meal.quantity = 100; coneCount.value = 1; selectedCommonMeal.value = 'egg'; commonMealCount.value = 1 } }
 function openRecipeEdit(saved) { error.value = ''; notice.value = ''; importText.value = ''; editingRecipeId.value = saved.id; Object.assign(recipe, recipeForEditing(saved, state.value.products)); modal.value = 'recipe' }
+function ingredientType(line) { return Object.hasOwn(line, 'recipeId') ? 'recipe' : 'product' }
+function setIngredientType(index, type) { recipe.ingredients[index] = type === 'recipe' ? { recipeId: '', portions: 1, label: '' } : { productId: '', grams: 100, basisUnit: '', label: '', excluded: false } }
+function ingredientRecipe(line) { return state.value.recipes.find(item => item.id === line.recipeId) }
+const availableIngredientRecipes = computed(() => state.value.recipes.filter(item => item.id !== editingRecipeId.value))
 function stopBarcodeScan() { barcodeControls?.stop(); barcodeControls = undefined; barcodeReader = undefined; barcodeScanning.value = false }
 function acceptDetectedBarcode(value) {
     const code = String(value || '').trim()
@@ -315,9 +319,9 @@ async function saveFiber(savedProduct) {
     finally { busy.value = false }
 }
 async function saveRecipe() {
-    if (recipe.ingredients.some(line => !line.excluded && !line.productId)) { error.value = 'Choisis un produit pour chaque ingrédient comptabilisé.'; return }
+    if (recipe.ingredients.some(line => ingredientType(line) === 'recipe' ? !line.recipeId : !line.excluded && !line.productId)) { error.value = 'Choisis un produit ou une recette pour chaque ingrédient comptabilisé.'; return }
     const id = editingRecipeId.value
-    await send(id ? `recipes/${encodeURIComponent(id)}` : 'recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ({ productId: x.productId, grams: Number(x.grams), basisUnit: ingredientBasisUnit(x), label: x.label, excluded: x.excluded === true })) }, id ? 'PATCH' : 'POST')
+    await send(id ? `recipes/${encodeURIComponent(id)}` : 'recipes', { name: recipe.name, portions: Number(recipe.portions), instructions: recipe.instructions, ingredients: recipe.ingredients.map(x => ingredientType(x) === 'recipe' ? { recipeId: x.recipeId, portions: Number(x.portions) } : { productId: x.productId, grams: Number(x.grams), basisUnit: ingredientBasisUnit(x), label: x.label, excluded: x.excluded === true }) }, id ? 'PATCH' : 'POST')
     if (!error.value) { Object.assign(recipe, { name: '', portions: 1, instructions: '', ingredients: [{ productId: '', grams: 100, label: '', excluded: false }] }); importText.value = '' }
 }
 async function saveMeal() { if (!meal.itemId) { error.value = `Choisis ${meal.itemType === 'recipe' ? 'une recette' : 'un produit'}.`; return } await send('meals', { ...meal, date: date.value, quantity: Number(meal.quantity) }) }
@@ -665,9 +669,9 @@ async function scanPhoto(event) {
                         <details v-if="r.ingredients?.length || r.instructions" class="recipe-details">
                             <summary>Voir la recette</summary>
                             <ul>
-                                <li v-for="(line, i) in r.ingredients" :key="i">{{ quantityText(line.grams, line.name,
+                                <li v-for="(line, i) in r.ingredients" :key="i"><template v-if="line.recipeId">{{ line.portions }} portion{{ line.portions > 1 ? 's' : '' }} de {{ line.name }}</template><template v-else>{{ quantityText(line.grams, line.name,
                                     line.basisUnit) }}{{ quantityKind(line.name) === 'egg' ? '' : ` de ${line.name}`
-                                    }}{{ line.excluded ? ' · non comptabilisé' : '' }}
+                                    }}{{ line.excluded ? ' · non comptabilisé' : '' }}</template>
                                 </li>
                             </ul>
                             <p v-if="r.instructions" class="recipe-steps">{{ r.instructions }}</p>
@@ -813,8 +817,25 @@ async function scanPhoto(event) {
                         cuisson
                         ajoute de l’eau, sans changer les calories totales.</p><label
                         class="eyebrow">INGRÉDIENTS</label>
-                    <p v-if="!state.products.length" class="tip">Ajoute d’abord un produit pour composer ta recette.</p>
+                    <p v-if="!state.products.length && !availableIngredientRecipes.length" class="tip">Ajoute d’abord un produit ou une recette pour composer ta recette.</p>
                     <div v-for="(line, i) in recipe.ingredients" :key="i" class="ingredient-block">
+                        <div class="field ingredient-type"><label :for="'r-type-' + i">Type d’ingrédient</label><select :id="'r-type-' + i" :value="ingredientType(line)" @change="setIngredientType(i, $event.target.value)">
+                            <option value="product">Produit</option><option value="recipe" :disabled="!availableIngredientRecipes.length">Recette existante</option>
+                        </select></div>
+                        <template v-if="ingredientType(line) === 'recipe'">
+                            <div class="ingredient-row">
+                                <SearchSelect :id="'r-recipe-' + i" v-model="line.recipeId" :options="availableIngredientRecipes"
+                                    :label="'Recette pour ingrédient ' + (i + 1)" placeholder="Choisir une recette"
+                                    search-placeholder="Nom de la recette" required />
+                                <input v-model="line.portions" type="number" min="0.01" max="1000" step="0.01" required
+                                    :aria-label="'Nombre de portions de recette pour ingrédient ' + (i + 1)" placeholder="Portions">
+                                <button type="button" aria-label="Retirer cet ingrédient" :disabled="recipe.ingredients.length === 1"
+                                    @click="recipe.ingredients.splice(i, 1)">×</button>
+                            </div>
+                            <p class="helper">Indique les portions utilisées pour toute la nouvelle recette<span v-if="ingredientRecipe(line)">. Pour utiliser toute la recette « {{ ingredientRecipe(line).name }} », saisis {{ ingredientRecipe(line).portions }}</span>.</p>
+                            <p v-if="line.recipeId && !ingredientRecipe(line)" class="tip">Cette recette n’est plus disponible. Choisis-en une autre avant d’enregistrer.</p>
+                        </template>
+                        <template v-else>
                         <div v-if="line.label" class="source-ingredient">{{ line.original || line.label }} <span
                                 v-if="line.estimated">· quantité estimée ou à préciser</span></div>
                         <div class="ingredient-row">
@@ -864,6 +885,7 @@ async function scanPhoto(event) {
                         <div v-if="line.excluded" class="field"><label :for="'r-excluded-' + i">Nom de
                                 l’ingrédient</label><input :id="'r-excluded-' + i" v-model.trim="line.label" required
                                 placeholder="Ex. Eau ou levure boulangère"></div>
+                        </template>
                     </div>
                     <p v-if="rawStarchPortions.length" class="tip"><span v-for="(item, i) in rawStarchPortions"
                             :key="i">{{
@@ -880,7 +902,7 @@ async function scanPhoto(event) {
                         ml, saisis
                         des cl (1 cl = 10 ml). Les ingrédients non comptabilisés restent dans la recette, sans calories
                         ajoutées.</p><button class="primary full"
-                        :disabled="busy || importBusy || !state.products.length">{{
+                        :disabled="busy || importBusy || (!state.products.length && !availableIngredientRecipes.length)">{{
                             editingRecipeId ? 'Enregistrer les modifications' : 'Enregistrer la recette' }}</button>
                 </form>
                 <form v-else-if="modal === 'meal'" @submit.prevent="saveMeal">

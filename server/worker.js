@@ -226,6 +226,23 @@ async function api(request, env, url) {
         fibers = [],
         saved = [];
       for (const line of ingredients) {
+        if (line?.recipeId !== undefined) {
+          const quantity = numeric(line.portions, 0.01, 1000);
+          if (!quantity) return fail("Vérifie le nombre de portions de la recette utilisée.");
+          if (updating && line.recipeId === parts[1])
+            return fail("Une recette ne peut pas se contenir elle-même.");
+          const source = typeof line.recipeId === "string" && await one(
+            db,
+            "SELECT id,name,kcal,protein,carbs,fat,fiber FROM recipes WHERE id = ? AND owner_id = ?",
+            line.recipeId,
+            owner,
+          );
+          if (!source) return fail("Une recette utilisée comme ingrédient est introuvable.");
+          for (const key of Object.keys(totals)) totals[key] += source[key] * quantity;
+          fibers.push(source.fiber == null ? null : source.fiber * quantity);
+          saved.push({ recipeId: source.id, name: source.name, portions: quantity });
+          continue;
+        }
         const grams = numeric(line?.grams, 0.1, 100000);
         if (!grams)
           return fail("Vérifie les quantités des ingrédients.");
@@ -256,7 +273,7 @@ async function api(request, env, url) {
         saved.push({ productId: p.id, name: p.name, grams, basisUnit, unitOverride: liquid && basisUnit !== p.basis_unit });
       }
       if (saved.every((line) => line.excluded))
-        return fail("Sélectionne au moins un produit comptabilisé pour la recette.");
+        return fail("Sélectionne au moins un produit ou une recette comptabilisée.");
       const values = Object.values(totals).map(x => Math.round(x / portions * 10) / 10);
       const fiber = fibers.some(value => value === null) ? null : Math.round(fibers.reduce((sum, value) => sum + value, 0) / portions * 10) / 10;
       const ingredientsJson = JSON.stringify({ ingredients: saved, instructions });
